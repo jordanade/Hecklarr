@@ -1,0 +1,15 @@
+services:
+  hecklarr:
+    build: .
+    image: hecklarr:local
+    restart: unless-stopped
+    ports:
+      - "${HECKLARR_BIND_ADDRESS:-127.0.0.1}:6162:6162"
+    environment:
+      TZ: ${TZ:-America/Detroit}
+    volumes:
+      - ./config:/config
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true

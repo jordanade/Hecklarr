@@ -1,0 +1,15 @@
+__pycache__
+*.pyc
+.DS_Store
+.git
+.env*
+!.env.example
+config
+settings.json
+snapshot.json
+sessions.json
+settings.*.json
+snapshot.*.json
+sessions.*.json
+*.key
+*.pem
