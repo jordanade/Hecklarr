@@ -114,7 +114,10 @@ function renderStatus(status) {
   for (const movie of (status.reviewed || []).filter(row => !row.included)) {
     const row = element('div', undefined, 'review-row');
     const description = element('div', undefined, 'review-copy');
-    description.append(element('span', `${movie.title} (${movie.year || 'TBA'}) · TMDB ${movie.tmdbId}`),
+    const title_link = element('a', movie.title);
+    title_link.href = 'https://www.themoviedb.org/movie/' + movie.tmdbId;
+    title_link.target = '_blank'; title_link.rel = 'noreferrer';
+    description.append(title_link, element('span', ` (${movie.year || 'TBA'}) · TMDB ${movie.tmdbId}`),
       element('small', `${movie.comedian} · ${movie.reason}`));
     const include = element('button', 'Include this', 'quiet');
     include.type = 'button';
