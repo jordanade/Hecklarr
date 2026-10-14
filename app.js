@@ -72,8 +72,10 @@ function renderStatus(status) {
       $('#confirm-exclude').textContent = 'Exclude & delete';
       $('#exclude-dialog').showModal();
     });
-    title.append(link, exclude);
-    row.append(title, element('td', movie.year), element('td', movie.comedian), element('td', movie.reason));
+    title.append(link);
+    const actions = element('td', undefined, 'table-actions');
+    actions.append(exclude);
+    row.append(title, element('td', movie.year), element('td', movie.comedian), element('td', movie.reason), actions);
     $('#specials').append(row);
   }
   $('#empty').hidden = (status.items || []).length > 0;
