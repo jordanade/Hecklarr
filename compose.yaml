@@ -1,7 +1,7 @@
 services:
   hecklarr:
-    build: .
-    image: hecklarr:local
+    image: ghcr.io/jordanade/hecklarr:latest
+    pull_policy: missing
     restart: unless-stopped
     ports:
       - "${HECKLARR_BIND_ADDRESS:-127.0.0.1}:6162:6162"

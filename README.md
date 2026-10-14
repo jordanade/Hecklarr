@@ -26,7 +26,7 @@ Hecklarr connects to Radarr and TMDB; it does not require access to your media f
 
 ## Installation
 
-Clone this repository or download and extract its ZIP. Run these commands from the directory containing `Dockerfile` and `compose.yaml`.
+Download `compose.yaml` from this repository, or clone the repository and run these commands from its directory. Compose pulls the published image from GitHub Container Registry.
 
 On a Linux Docker host, prepare the configuration directory for the container, which runs as UID/GID `1000:1000`:
 
@@ -39,7 +39,7 @@ sudo chmod 700 config
 Start Hecklarr:
 
 ```sh
-docker compose up -d --build
+docker compose up -d
 ```
 
 Open **[http://localhost:6162](http://localhost:6162)** on the Docker host.
@@ -63,7 +63,7 @@ Then open **`http://YOUR_SERVER_IP:6162`** in your browser. Keep direct HTTP acc
 
 ### Add to an existing Compose stack
 
-Copy the service from `compose.yaml` into your stack. Adjust `build` to point at the Hecklarr source directory and the volume to a persistent configuration directory owned by `1000:1000`.
+Copy the service from `compose.yaml` into your stack. Keep the configuration volume persistent and owned by UID/GID `1000:1000`.
 
 If Radarr and Hecklarr share a Docker network, they can use service names to reach each other. Otherwise, use addresses reachable from the respective containers.
 
@@ -129,11 +129,25 @@ The app includes TMDB's approved logo and required attribution notice in its Cre
 
 Back up `config/settings.json` privately before updating; it contains your account, API keys, and watchlist preferences. Do not publish it or commit it to Git. The catalog in `config/snapshot.json` is a renewable metadata cache; exclude it from long-term backups. Any backup containing TMDB metadata must follow the same retention limit as the live cache.
 
-After pulling or copying the latest source, rebuild:
+To update to the latest published stable image:
 
 ```sh
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
+
+For a fixed release, change the image tag in `compose.yaml` from `latest` to a version such as `1.2.3`.
+
+## Publishing container images
+
+Maintainers can publish a release image by pushing a semantic version tag:
+
+```sh
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+GitHub Actions runs the tests and Docker build before publishing `ghcr.io/jordanade/hecklarr:1.2.3`. Stable tags also update `latest`; prerelease tags do not. The first published container package is private by default, so change its visibility to public in GitHub's package settings before asking users to pull it anonymously. The workflow uses GitHub's built-in token and needs no stored registry credential.
 
 View service status and logs:
 

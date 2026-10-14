@@ -1,4 +1,5 @@
 FROM python:3.13-alpine@sha256:2d9aefe2fef018a7eb2c13064c89c71929800fd2e5dccdbf52ea5da5bb8d929a
+LABEL org.opencontainers.image.source="https://github.com/jordanade/Hecklarr"
 RUN apk add --no-cache tzdata
 WORKDIR /app
 COPY app.py index.html app.js style.css icon.png tmdb-logo.svg ./
