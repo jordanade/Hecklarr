@@ -151,7 +151,7 @@ async function loadOptions() {
 }
 async function loadDashboard() {
   settings = await api('settings');
-  $('#setup').hidden = true; $('#login').hidden = true; $('#dashboard').hidden = false; $('#logout').hidden = false;
+  $('#setup').hidden = true; $('#login').hidden = true;
   const library_ready = Boolean(settings.radarrListId || (settings.radarrUrl && settings.hasRadarrKey));
   for (const section of document.querySelectorAll('[data-library-ready]')) section.hidden = !library_ready;
   $('.grid').classList.toggle('setup-only', !library_ready);
@@ -163,10 +163,12 @@ async function loadDashboard() {
     form.elements[key].placeholder = present ? 'Saved — leave blank to keep' : 'Enter an API key';
     form.elements[key].value = '';
   }
-  renderPeople(); renderStatus(await api('status'));
+  renderPeople();
+  try { renderStatus(await api('status')); } catch (error) { notify(error.message, true); }
   if (settings.radarrUrl && settings.hasRadarrKey) {
     try { await loadOptions(); } catch (error) { notify(error.message, true); }
   }
+  $('#dashboard').hidden = false; $('#logout').hidden = false;
 }
 $('#setup-form').addEventListener('submit', async event => {
   event.preventDefault(); const button = event.submitter; button.disabled = true;
