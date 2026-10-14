@@ -26,7 +26,7 @@ Hecklarr connects to Radarr and TMDB; it does not require access to your media f
 
 ## Installation
 
-Download `compose.yaml` from this repository, or clone the repository and run these commands from its directory. Compose pulls the published image from GitHub Container Registry.
+Hecklarr is distributed as a prebuilt container in [GitHub Container Registry](https://github.com/jordanade/Hecklarr/pkgs/container/hecklarr); you do not need to clone the source or build the image. Download the [Compose file](compose.yaml) from this repository. It runs `ghcr.io/jordanade/hecklarr:latest`, which Docker Compose pulls automatically when you start the service.
 
 On a Linux Docker host, prepare the configuration directory for the container, which runs as UID/GID `1000:1000`:
 
