@@ -1,6 +1,7 @@
 const $ = (selector) => document.querySelector(selector);
 let settings;
 let specialToExclude;
+let catalogItems = [];
 async function api(path, body) {
   const response = await fetch('/api/' + path, {method: body === undefined ? 'GET' : 'POST',
     headers: {'Content-Type': 'application/json', 'X-Hecklarr': '1'},
@@ -33,10 +34,12 @@ function renderPeople() {
   select.replaceChildren();
   $('#exceptions').replaceChildren();
   for (const person of settings.comedians) {
+    const special_count = catalogItems.filter(movie => movie.comedian === person.name).length;
     select.add(new Option(person.name, person.id));
     const row = element('div', undefined, 'person');
     const label = element('div');
-    label.append(element('strong', person.name), element('small', 'TMDB person ' + person.id));
+    label.append(element('strong', person.name), element('small', 'TMDB person ' + person.id),
+      element('small', `${special_count} special${special_count === 1 ? '' : 's'} tracked`));
     const remove = element('button', 'Remove', 'quiet');
     remove.addEventListener('click', () => busy(remove, async () => {
       settings = await api('comedians/remove', {id: person.id}); renderPeople();
@@ -48,12 +51,13 @@ function renderPeople() {
   }
 }
 function renderStatus(status) {
-  $('#special-count').textContent = (status.items || []).length;
+  catalogItems = status.items || [];
+  $('#special-count').textContent = catalogItems.length;
   $('#connection').textContent = settings.radarrListId ? 'Connected to Radarr' : 'Ready to connect';
   $('#updated').textContent = 'Daily refresh at 3 AM · America/Detroit';
   $('#catalog-updated').textContent = status.updatedAt ? 'Updated ' + new Date(status.updatedAt).toLocaleString() : 'Waiting for first refresh';
   $('#specials').replaceChildren();
-  const newestFirst = [...(status.items || [])].sort((a, b) =>
+  const newestFirst = [...catalogItems].sort((a, b) =>
     (b.releaseDate || b.year || '').localeCompare(a.releaseDate || a.year || '') || a.title.localeCompare(b.title));
   for (const movie of newestFirst) {
     const row = element('tr');
@@ -107,8 +111,8 @@ async function refreshCatalog() {
   notify('Checking TMDB for specials…');
   const status = await api('refresh', {});
   settings = await api('settings');
-  renderPeople();
   renderStatus(status);
+  renderPeople();
   notify(`Catalog refreshed: ${status.items.length} specials.`);
 }
 $('#delete-from-radarr').addEventListener('change', event => {
@@ -131,7 +135,7 @@ $('#exclude-form').addEventListener('submit', event => {
       throw error;
     }
     $('#exclude-dialog').close();
-    settings = await api('settings'); renderPeople(); renderStatus(await api('status'));
+    settings = await api('settings'); renderStatus(await api('status')); renderPeople();
     if (!delete_from_radarr) notify(title + ' was excluded from Hecklarr and left in Radarr.');
     else if (!result.removedFromRadarr) notify(title + ' was excluded from Hecklarr. No matching movie was in Radarr to delete.');
     else if (result.hadFiles) notify(title + ' was excluded, removed from Radarr, and its movie files were deleted.');
@@ -163,8 +167,8 @@ async function loadDashboard() {
     form.elements[key].placeholder = present ? 'Saved — leave blank to keep' : 'Enter an API key';
     form.elements[key].value = '';
   }
-  renderPeople();
   try { renderStatus(await api('status')); } catch (error) { notify(error.message, true); }
+  renderPeople();
   if (settings.radarrUrl && settings.hasRadarrKey) {
     try { await loadOptions(); } catch (error) { notify(error.message, true); }
   }
