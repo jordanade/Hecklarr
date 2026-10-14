@@ -256,6 +256,8 @@ def syncRadarr():
         settings = dict(SETTINGS)
     if not settings.get('tmdbApiKey'):
         raise ValueError('Add a TMDB API key or Read Access Token before applying settings')
+    if not SNAPSHOT.get('items'):
+        raise ValueError('The catalog has no specials yet. Add a comedian or include a special, then refresh before applying this list to Radarr')
     root = settings.get('rootFolderPath', '')
     if not root.startswith('/'):
         raise ValueError('Enter an absolute folder path as seen inside Radarr')

@@ -152,7 +152,7 @@ async function loadOptions() {
 async function loadDashboard() {
   settings = await api('settings');
   $('#setup').hidden = true; $('#login').hidden = true; $('#dashboard').hidden = false; $('#logout').hidden = false;
-  const library_ready = Boolean(settings.radarrListId);
+  const library_ready = Boolean(settings.radarrListId || (settings.radarrUrl && settings.hasRadarrKey));
   for (const section of document.querySelectorAll('[data-library-ready]')) section.hidden = !library_ready;
   $('.grid').classList.toggle('setup-only', !library_ready);
   if (!library_ready) $('#settings-form details').open = true;

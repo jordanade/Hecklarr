@@ -348,6 +348,12 @@ class HttpContractTest(unittest.TestCase):
             app.syncRadarr()
         radarr.assert_not_called()
 
+    def test_radarr_setup_explains_empty_catalog_before_calling_radarr(self):
+        app.SNAPSHOT = {'updatedAt': 'now', 'items': []}
+        with patch.object(app, 'radarr') as radarr, self.assertRaisesRegex(ValueError, 'catalog has no specials'):
+            app.syncRadarr()
+        radarr.assert_not_called()
+
     def test_saving_blank_keys_preserves_existing_credentials(self):
         with self.request('/api/settings', {'radarrApiKey': '', 'tmdbApiKey': ''},
                           {'X-Api-Key': 'private-api-key', 'X-Hecklarr': '1'}) as response:
@@ -394,6 +400,7 @@ class HttpContractTest(unittest.TestCase):
 
     def test_rename_updates_existing_radarr_list_by_id(self):
         app.SETTINGS.update({'radarrListId': 1, 'feedBaseUrl': 'http://hecklarr:6162'})
+        app.SNAPSHOT = {'items': [{'tmdbId': 52849}]}
         def respond(path, settings, body=None, method=None):
             if path == 'rootfolder':
                 return [{'path': '/data/comedy'}]
