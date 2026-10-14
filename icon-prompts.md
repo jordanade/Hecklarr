@@ -19,3 +19,9 @@ The final asset uses an opaque background. The browser rounds its corners in the
 The active icon was revised with the built-in image generation tool to show only the microphone, clip, and top of the stand. This replaces the full-stand composition above.
 
 Use case: precise-object-edit. Edit target: the supplied Hecklarr app icon. Reframe and enlarge the existing microphone and its stand clip into a bold square close-up. Show ONLY the microphone, clip, adjustment joint, and a short section of the upper stand entering through the bottom edge. The microphone should dominate the image: its capsule and body span roughly 75–85 percent of the canvas width on the same jaunty upward diagonal. Remove the base and entire lower stand from the composition. Keep the microphone fully visible with modest safe padding around the grille, and keep the clip visibly attaching it to the stand. Preserve the existing dark charcoal material, fine light grille highlights, restrained sculpted style, and perfectly flat opaque pale-lime #dce99b background. No text, people, extra objects, shadows or texture on the background. This is a 42px app icon: strong simple silhouette and a much larger mic.
+
+## Microphone cable revision
+
+The close-up icon was revised with the built-in image generation tool to attach a microphone cable and let it hang in a relaxed, loose loop beside the stand.
+
+Use case: precise-object-edit. Edit target: the supplied Hecklarr icon. Change only the microphone cable: show it plugged visibly into the base of the microphone handle, hanging in a wide, natural gravity-led loop beside the stand, then trailing out through the bottom edge. Preserve the microphone, clip, crop, jaunty angle, stand, exact flat pale-lime background, materials, lighting, and composition. No extra objects or text.
