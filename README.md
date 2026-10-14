@@ -4,7 +4,7 @@
 
 Track your favorite stand-up comedians and automatically add their specials to Radarr.
 
-Hecklarr finds specials through TMDB and maintains a Radarr import list. Radarr handles searching, downloading, renaming, and importing. Point Plex at a separate comedy folder to give your specials their own library.
+Hecklarr finds specials through TMDB and maintains a Radarr import list. Radarr handles searching, retrieval, renaming, and importing. Point Plex or Jellyfin at a separate comedy folder to give your specials their own library.
 
 ## Features
 
