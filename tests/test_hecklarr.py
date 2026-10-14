@@ -192,7 +192,7 @@ class ComedianRemovalTest(unittest.TestCase):
 
 class HttpContractTest(unittest.TestCase):
     def setUp(self):
-        self.saved = (app.SETTINGS, app.SNAPSHOT, app.STATE_DIR, app.SESSIONS, app.LAST_ERROR)
+        self.saved = (app.SETTINGS, app.SNAPSHOT, app.STATE_DIR, app.SESSIONS, app.LAST_ERROR, app.FAILURES)
         self.directory = tempfile.TemporaryDirectory()
         app.STATE_DIR = Path(self.directory.name)
         salt = b'contract-test-salt'
@@ -203,8 +203,9 @@ class HttpContractTest(unittest.TestCase):
                         'comedians': [], 'rootFolderPath': '/data/comedy', 'qualityProfileId': 4}
         app.SNAPSHOT = {'updatedAt': app.now(), 'items': [{'tmdbId': 689643, 'title': 'Sincerely Louis C.K.', 'year': '2020'}]}
         app.SESSIONS = {}
+        app.FAILURES = {}
         app.LAST_ERROR = None
-        self.server = app.ThreadingHTTPServer(('127.0.0.1', 0), app.Handler)
+        self.server = app.LimitedThreadingHTTPServer(('127.0.0.1', 0), app.Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base = 'http://127.0.0.1:' + str(self.server.server_port)
@@ -214,7 +215,7 @@ class HttpContractTest(unittest.TestCase):
         self.server.server_close()
         self.thread.join()
         self.directory.cleanup()
-        app.SETTINGS, app.SNAPSHOT, app.STATE_DIR, app.SESSIONS, app.LAST_ERROR = self.saved
+        app.SETTINGS, app.SNAPSHOT, app.STATE_DIR, app.SESSIONS, app.LAST_ERROR, app.FAILURES = self.saved
 
     def request(self, path, body=None, headers=None):
         data = json.dumps(body).encode() if body is not None else None
@@ -357,7 +358,7 @@ class HttpContractTest(unittest.TestCase):
     def test_tmdb_request_identifies_app_and_classifies_access_errors(self):
         for code, error_type in [(404, app.TmdbNotFound), (401, app.TmdbAccessDenied), (403, app.TmdbAccessDenied)]:
             error = urllib.error.HTTPError('https://api.themoviedb.org/3/person/123', code, 'Test error', {}, None)
-            with self.subTest(code=code), patch.object(app.urllib.request, 'urlopen', side_effect=error) as request:
+            with self.subTest(code=code), patch.object(app.HTTP_OPENER, 'open', side_effect=error) as request:
                 with self.assertRaises(error_type):
                     app.requestJson('https://api.themoviedb.org/3/person/123', 'test-api-key', tmdb=True)
                 self.assertEqual('Hecklarr/0.1', request.call_args.args[0].get_header('User-agent'))

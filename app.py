@@ -4,11 +4,13 @@ import datetime as dt
 import hashlib
 import hmac
 import http.cookies
+import io
 import json
 import os
 from pathlib import Path
 import re
 import secrets
+import tempfile
 import threading
 import time
 import urllib.error
@@ -26,6 +28,74 @@ SETTINGS = {}
 SNAPSHOT = {}
 LAST_ERROR = None
 CACHE_MAX_AGE = dt.timedelta(days=180)
+PASSWORD_SLOTS = threading.BoundedSemaphore(2)
+
+
+class SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        def origin(url):
+            parsed = urllib.parse.urlsplit(url)
+            port = parsed.port
+            if port is None:
+                port = 443 if parsed.scheme == 'https' else 80
+            return (parsed.scheme.lower(), parsed.hostname, port)
+
+        target = urllib.parse.urlsplit(newurl)
+        if (target.username is not None or target.password is not None
+                or origin(req.full_url) != origin(newurl)):
+            raise ValueError('Redirect to a different origin was blocked. Use the final service address.')
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+HTTP_OPENER = urllib.request.build_opener(SameOriginRedirectHandler())
+
+
+class RequestReader(io.RawIOBase):
+    def __init__(self, connection, timeout):
+        super().__init__()
+        self.connection = connection
+        self.deadline = time.monotonic() + timeout
+
+    def readable(self):
+        return True
+
+    def readinto(self, buffer):
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('Request timed out')
+        self.connection.settimeout(remaining)
+        return self.connection.recv_into(buffer)
+
+
+class LimitedThreadingHTTPServer(ThreadingHTTPServer):
+    request_queue_size = 32
+
+    def __init__(self, server_address, handler, max_workers=32):
+        self.worker_slots = threading.BoundedSemaphore(max_workers)
+        super().__init__(server_address, handler)
+
+    def process_request(self, request, client_address):
+        if not self.worker_slots.acquire(blocking=False):
+            try:
+                request.settimeout(1)
+                request.sendall(b'HTTP/1.0 503 Service Unavailable\r\n'
+                                b'Content-Length: 0\r\nConnection: close\r\n\r\n')
+            except OSError:
+                pass
+            finally:
+                self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self.worker_slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.worker_slots.release()
 
 
 class TmdbNotFound(ValueError):
@@ -41,10 +111,14 @@ def now():
 
 
 def saveJson(path, data):
-    temporary = path.with_suffix('.tmp')
-    temporary.write_text(json.dumps(data, indent=2) + '\n')
-    temporary.chmod(0o600)
-    temporary.replace(path)
+    fd, filename = tempfile.mkstemp(prefix=path.stem + '.', suffix='.tmp', dir=path.parent)
+    temporary = Path(filename)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            stream.write(json.dumps(data, indent=2) + '\n')
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def saveSettings(patch):
@@ -85,7 +159,7 @@ def requestJson(url, key, body=None, method=None, tmdb=False):
     for attempt in range(3):
         try:
             req = urllib.request.Request(url, data=payload, headers=headers, method=method)
-            with urllib.request.urlopen(req, timeout=30) as response:
+            with HTTP_OPENER.open(req, timeout=30) as response:
                 payload = response.read()
                 return json.loads(payload) if payload else None
         except urllib.error.HTTPError as error:
@@ -207,6 +281,8 @@ def expireMetadata():
     with LOCK:
         # An interrupted atomic write must not leave a second, unbounded cache.
         (STATE_DIR / 'snapshot.tmp').unlink(missing_ok=True)
+        for temporary in STATE_DIR.glob('snapshot.*.tmp'):
+            temporary.unlink(missing_ok=True)
         if not SNAPSHOT:
             return
         try:
@@ -380,8 +456,9 @@ def checkPassword(password, encoded):
         if kind != 'scrypt':
             return False
         expected = base64.b64decode(expected)
-        actual = hashlib.scrypt(password.encode(), salt=base64.b64decode(salt), n=int(n),
-                                r=int(r), p=int(p), dklen=len(expected))
+        with PASSWORD_SLOTS:
+            actual = hashlib.scrypt(password.encode(), salt=base64.b64decode(salt), n=int(n),
+                                    r=int(r), p=int(p), dklen=len(expected))
         return hmac.compare_digest(actual, expected)
     except (ValueError, TypeError):
         return False
@@ -402,6 +479,14 @@ def publicSettings():
 
 
 class Handler(BaseHTTPRequestHandler):
+    timeout = 10
+
+    def setup(self):
+        super().setup()
+        self.rfile.close()
+        # A total read deadline also stops clients that slowly drip header/body bytes.
+        self.rfile = io.BufferedReader(RequestReader(self.connection, self.timeout))
+
     def log_message(self, *args):
         pass  # Feed query strings contain a credential.
 
@@ -433,6 +518,7 @@ class Handler(BaseHTTPRequestHandler):
             return bool(token and SESSIONS.get(hashlib.sha256(token.value.encode()).hexdigest(), 0) > time.time())
 
     def do_GET(self):
+        self.connection.settimeout(self.timeout)
         expireMetadata()
         url = urllib.parse.urlsplit(self.path)
         path = url.path
@@ -496,7 +582,9 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get('Content-Length', '0'))
             if length < 0 or length > 65536:
                 raise ValueError('Invalid request size')
-            body = json.loads(self.rfile.read(length) or b'{}')
+            payload = self.rfile.read(length)
+            self.connection.settimeout(self.timeout)
+            body = json.loads(payload or b'{}')
             if not isinstance(body, dict):
                 raise ValueError('Expected an object')
             if self.path == '/api/setup':
@@ -512,7 +600,8 @@ class Handler(BaseHTTPRequestHandler):
                     if password != body.get('passwordConfirmation'):
                         raise ValueError('Passwords do not match')
                     salt = secrets.token_bytes(16)
-                    hashed = hashlib.scrypt(password.encode(), salt=salt, n=16384, r=8, p=1, dklen=64)
+                    with PASSWORD_SLOTS:
+                        hashed = hashlib.scrypt(password.encode(), salt=salt, n=16384, r=8, p=1, dklen=64)
                     encoded = 'scrypt$16384$8$1$' + base64.b64encode(salt).decode() + '$' + base64.b64encode(hashed).decode()
                     saveSettings({'authUser': username, 'authHash': encoded})
                 return self.reply(201, {'ok': True})
@@ -520,17 +609,26 @@ class Handler(BaseHTTPRequestHandler):
                 if not SETTINGS.get('authHash'):
                     return self.reply(409, {'error': 'Create your account first'})
                 ip = self.client_address[0]
-                recent = [stamp for stamp in FAILURES.get(ip, []) if stamp > time.time() - 600]
-                if len(recent) >= 8:
-                    return self.reply(429, {'error': 'Too many attempts. Try again in ten minutes.'})
+                with LOCK:
+                    cutoff = time.time() - 600
+                    for address in list(FAILURES):
+                        recent = [stamp for stamp in FAILURES[address] if stamp > cutoff]
+                        if recent:
+                            FAILURES[address] = recent
+                        else:
+                            FAILURES.pop(address)
+                    recent = FAILURES.get(ip, [])
+                    if len(recent) >= 8 or (ip not in FAILURES and len(FAILURES) >= 1024):
+                        return self.reply(429, {'error': 'Too many attempts. Try again in ten minutes.'})
+                    # Reserve before hashing so concurrent attempts cannot share the same budget.
+                    FAILURES[ip] = recent + [time.time()]
                 user_ok = hmac.compare_digest(str(body.get('username', '')).encode(), SETTINGS['authUser'].encode())
                 pass_ok = checkPassword(str(body.get('password', '')), SETTINGS['authHash'])
                 if not user_ok or not pass_ok:
-                    FAILURES[ip] = recent + [time.time()]
                     return self.reply(401, {'error': 'Incorrect username or password'})
-                FAILURES.pop(ip, None)
                 token = secrets.token_urlsafe(32)
                 with LOCK:
+                    FAILURES.pop(ip, None)
                     expired = [key for key, expiry in SESSIONS.items() if expiry <= time.time()]
                     for key in expired:
                         SESSIONS.pop(key)
@@ -612,6 +710,10 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Refresh the catalog first')
                 return self.reply(200, syncRadarr())
             return self.reply(404, {'error': 'Not found'})
+        except TimeoutError:
+            self.close_connection = True
+            self.connection.settimeout(self.timeout)
+            return self.reply(408, {'error': 'Request timed out'})
         except (ValueError, KeyError, StopIteration) as error:
             if isinstance(error, TmdbAccessDenied):
                 clearMetadata()
@@ -634,7 +736,7 @@ def scheduledRefresh():
 
 def main():
     global SETTINGS, SNAPSHOT, SESSIONS
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    STATE_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     SETTINGS = loadSettings()
     if (STATE_DIR / 'snapshot.json').exists():
         SNAPSHOT = json.loads((STATE_DIR / 'snapshot.json').read_text())
@@ -649,7 +751,7 @@ def main():
         except ValueError:
             pass
     threading.Thread(target=initialRefresh, daemon=True).start()
-    ThreadingHTTPServer(('0.0.0.0', 6162), Handler).serve_forever()
+    LimitedThreadingHTTPServer(('0.0.0.0', 6162), Handler).serve_forever()
 
 
 if __name__ == '__main__':
