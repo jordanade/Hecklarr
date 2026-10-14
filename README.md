@@ -107,7 +107,7 @@ Search for a comedian under **Comedians**, identify the correct person, and clic
 
 **Stand-up specials** shows the newest releases first. Under **Review metadata & exceptions**, use **Include this** to add a title excluded by incomplete metadata. You can also include or exclude a title by its TMDB movie ID. Explicit exclusions take priority over inclusions.
 
-Removing a comedian or excluding a title removes it from the feed. It does not delete or unmonitor movies already added to Radarr. To pause additions, disable the **Hecklarr - Comedy** import list in Radarr.
+Removing a comedian removes its specials from the feed but leaves existing Radarr movies in place. **Exclude this** opens a confirmation dialog with Radarr deletion checked by default. Confirming removes the title from Hecklarr and Radarr, and permanently deletes any movie files Radarr manages for it. Uncheck the option to exclude the title from Hecklarr's feed only. The exclusion remains in Hecklarr so a later refresh will not add the special again. To pause all additions, disable the **Hecklarr - Comedy** import list in Radarr.
 
 ## Matching and limitations
 

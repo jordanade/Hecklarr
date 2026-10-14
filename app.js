@@ -1,5 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 let settings;
+let specialToExclude;
 async function api(path, body) {
   const response = await fetch('/api/' + path, {method: body === undefined ? 'GET' : 'POST',
     headers: {'Content-Type': 'application/json', 'X-Hecklarr': '1'},
@@ -59,7 +60,19 @@ function renderStatus(status) {
     const title = element('td');
     const link = element('a', movie.title);
     link.href = 'https://www.themoviedb.org/movie/' + movie.tmdbId;
-    link.target = '_blank'; link.rel = 'noreferrer'; title.append(link);
+    link.target = '_blank'; link.rel = 'noreferrer';
+    const exclude = element('button', 'Exclude this', 'quiet table-exclude');
+    exclude.type = 'button';
+    exclude.setAttribute('aria-label', 'Exclude ' + movie.title + ' from Hecklarr');
+    exclude.addEventListener('click', () => {
+      specialToExclude = movie;
+      $('#exclude-special-title').textContent = movie.title;
+      $('#exclude-error').textContent = '';
+      $('#delete-from-radarr').checked = true;
+      $('#confirm-exclude').textContent = 'Exclude & delete';
+      $('#exclude-dialog').showModal();
+    });
+    title.append(link, exclude);
     row.append(title, element('td', movie.year), element('td', movie.comedian), element('td', movie.reason));
     $('#specials').append(row);
   }
@@ -96,6 +109,33 @@ async function refreshCatalog() {
   renderStatus(status);
   notify(`Catalog refreshed: ${status.items.length} specials.`);
 }
+$('#delete-from-radarr').addEventListener('change', event => {
+  $('#confirm-exclude').textContent = event.target.checked ? 'Exclude & delete' : 'Exclude from feed';
+});
+$('#exclude-dialog').addEventListener('close', () => { specialToExclude = null; });
+$('#cancel-exclude').addEventListener('click', () => $('#exclude-dialog').close());
+$('#exclude-form').addEventListener('submit', event => {
+  event.preventDefault();
+  if (!specialToExclude) return;
+  const button = event.submitter;
+  busy(button, async () => {
+    const title = specialToExclude.title;
+    const delete_from_radarr = $('#delete-from-radarr').checked;
+    let result;
+    try {
+      result = await api('specials/exclude', {movieId: specialToExclude.tmdbId, deleteFromRadarr: delete_from_radarr});
+    } catch (error) {
+      $('#exclude-error').textContent = error.message;
+      throw error;
+    }
+    $('#exclude-dialog').close();
+    settings = await api('settings'); renderPeople(); renderStatus(await api('status'));
+    if (!delete_from_radarr) notify(title + ' was excluded from Hecklarr and left in Radarr.');
+    else if (!result.removedFromRadarr) notify(title + ' was excluded from Hecklarr. No matching movie was in Radarr to delete.');
+    else if (result.hadFiles) notify(title + ' was excluded, removed from Radarr, and its movie files were deleted.');
+    else notify(title + ' was excluded and removed from Radarr. It had no movie files to delete.');
+  });
+});
 async function loadOptions() {
   const options = await api('radarr/options');
   $('#root-folders').replaceChildren(...options.roots.map(row => new Option(row.path, row.path)));

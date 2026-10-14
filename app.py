@@ -61,7 +61,7 @@ def loadSettings():
     settings = json.loads(path.read_text()) if path.exists() else {}
     defaults = {'authUser': '', 'authHash': '', 'tmdbApiKey': '', 'radarrApiKey': '',
                 'radarrUrl': '', 'rootFolderPath': '/data/comedy', 'qualityProfileId': 0,
-                'feedBaseUrl': '', 'comedians': [], 'radarrListId': None}
+                'feedBaseUrl': '', 'comedians': [], 'radarrListId': None, 'excludedMovieIds': []}
     settings = {**defaults, **settings}
     for person in settings['comedians']:
         person.pop('name', None)
@@ -86,7 +86,8 @@ def requestJson(url, key, body=None, method=None, tmdb=False):
         try:
             req = urllib.request.Request(url, data=payload, headers=headers, method=method)
             with urllib.request.urlopen(req, timeout=30) as response:
-                return json.load(response)
+                payload = response.read()
+                return json.loads(payload) if payload else None
         except urllib.error.HTTPError as error:
             if tmdb and error.code == 404:
                 raise TmdbNotFound('TMDB entry no longer available') from None
@@ -167,17 +168,21 @@ def buildSnapshot(settings, previous, fetch=tmdb):
         except TmdbNotFound:
             continue
         people.append({'id': person['id'], 'name': person['name']})
+        globally_excluded = set(settings.get('excludedMovieIds', []))
         retained_ids = {row['tmdbId'] for row in previous.get('items', [])
-                        if row['personId'] == person['id']} - set(person.get('excludeIds', []))
-        candidates = {entry['id'] for entry in credits['cast']}
+                        if row['personId'] == person['id']} - set(person.get('excludeIds', [])) - globally_excluded
+        credit_ids = {entry['id'] for entry in credits['cast']}
+        candidates = set(credit_ids)
         candidates.update(person.get('includeIds', []))
         candidates.update(retained_ids)
+        candidates.update(globally_excluded & (credit_ids | set(person.get('includeIds', []))))
         for movie_id in sorted(candidates):
             try:
                 movie = fetch(f'movie/{movie_id}?append_to_response=keywords,credits', settings)
             except TmdbNotFound:
                 continue
-            include, reason = classify(movie, person)
+            classifier_person = {**person, 'excludeIds': set(person.get('excludeIds', [])) | globally_excluded}
+            include, reason = classify(movie, classifier_person)
             if not include and movie_id in retained_ids:
                 include, reason = True, 'Retained special; metadata refreshed'
             release_date = movie.get('release_date') or ''
@@ -279,6 +284,55 @@ def syncRadarr():
     saveSettings({'radarrListId': saved['id']})
     radarr('command', settings, {'name': 'ImportListSync', 'definitionId': saved['id']})
     return {'id': saved['id'], 'rootFolderPath': root, 'name': saved['name']}
+
+
+def excludeSpecial(movie_id, delete_from_radarr):
+    global SNAPSHOT
+    with REFRESH_LOCK:
+        with LOCK:
+            settings = json.loads(json.dumps(SETTINGS))
+            snapshot = json.loads(json.dumps(SNAPSHOT))
+        movie = next((row for row in snapshot.get('items', []) if row['tmdbId'] == movie_id), None)
+        if movie is None:
+            movie = next((row for row in snapshot.get('reviewed', []) if row['tmdbId'] == movie_id), None)
+        if movie is None and movie_id not in settings.get('excludedMovieIds', []):
+            raise ValueError('That special is no longer in the catalog. Refresh and try again.')
+        matches = []
+        if delete_from_radarr:
+            matches = [row for row in radarr('movie', settings)
+                       if int(row.get('tmdbId', 0)) == movie_id]
+            if any(not row.get('id') for row in matches):
+                raise ValueError('Radarr returned a movie without an ID; no changes were made')
+
+        excluded = set(settings.get('excludedMovieIds', []))
+        excluded.add(movie_id)
+        saveSettings({'excludedMovieIds': sorted(excluded)})
+        snapshot['items'] = [row for row in snapshot.get('items', []) if row['tmdbId'] != movie_id]
+        matching_reviews = [row for row in snapshot.get('reviewed', []) if row['tmdbId'] == movie_id]
+        for row in matching_reviews:
+            row['included'] = False
+            row['reason'] = 'Explicitly excluded from Hecklarr'
+        if not matching_reviews and movie:
+            snapshot.setdefault('reviewed', []).append({**movie, 'included': False,
+                                                         'reason': 'Explicitly excluded from Hecklarr'})
+        with LOCK:
+            saveJson(STATE_DIR / 'snapshot.json', snapshot)
+            SNAPSHOT = snapshot
+
+        if delete_from_radarr:
+            try:
+                for row in matches:
+                    radarr(f"movie/{row['id']}?deleteFiles=true", settings, method='DELETE')
+            except ValueError as error:
+                raise ValueError('The special was excluded from the feed, but Radarr deletion did not finish: ' + str(error)) from None
+            if settings.get('radarrListId'):
+                try:
+                    radarr('command', settings, {'name': 'ImportListSync',
+                                                 'definitionId': settings['radarrListId']})
+                except ValueError as error:
+                    raise ValueError('The special was excluded and removed from Radarr, but the list sync failed: ' + str(error)) from None
+        return {'removedFromRadarr': len(matches),
+                'hadFiles': sum(bool(row.get('hasFile')) for row in matches)}
 
 
 def checkPassword(password, encoded):
@@ -496,8 +550,19 @@ class Handler(BaseHTTPRequestHandler):
                     for key in ['includeIds', 'excludeIds']:
                         person[key] = [entry for entry in person.get(key, []) if entry != movie_id]
                     person[body['action'] + 'Ids'].append(movie_id)
-                    saveSettings({'comedians': people})
+                    patch = {'comedians': people}
+                    if body['action'] == 'include':
+                        patch['excludedMovieIds'] = [entry for entry in SETTINGS.get('excludedMovieIds', [])
+                                                     if entry != movie_id]
+                    saveSettings(patch)
                 return self.reply(200, publicSettings())
+            if self.path == '/api/specials/exclude':
+                movie_id = int(body.get('movieId', 0))
+                delete_from_radarr = body.get('deleteFromRadarr', False)
+                if movie_id <= 0 or not isinstance(delete_from_radarr, bool):
+                    raise ValueError('Choose a valid special and deletion option')
+                result = excludeSpecial(movie_id, delete_from_radarr)
+                return self.reply(200, result)
             if self.path == '/api/refresh':
                 return self.reply(200, refresh(sync=True))
             if self.path == '/api/sync':
