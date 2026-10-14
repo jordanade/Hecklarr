@@ -32,14 +32,26 @@ function renderPeople() {
   $('#comedians').replaceChildren();
   const select = $('#override-form').elements.personId;
   select.replaceChildren();
+  const special_filter = $('#special-filter');
+  const selected_filter = special_filter.value;
+  special_filter.replaceChildren(new Option('All comedians', ''), ...settings.comedians.map(person => new Option(person.name, person.id)));
+  special_filter.value = settings.comedians.some(person => String(person.id) === selected_filter) ? selected_filter : '';
   $('#exceptions').replaceChildren();
   for (const person of settings.comedians) {
     const special_count = catalogItems.filter(movie => movie.comedian === person.name).length;
     select.add(new Option(person.name, person.id));
     const row = element('div', undefined, 'person');
     const label = element('div');
-    label.append(element('strong', person.name), element('small', 'TMDB person ' + person.id),
-      element('small', `${special_count} special${special_count === 1 ? '' : 's'} tracked`));
+    const count_link = element('a', `${special_count} special${special_count === 1 ? '' : 's'} tracked`, 'special-count-link');
+    count_link.href = '#specials-section';
+    count_link.setAttribute('aria-label', `Show ${special_count} special${special_count === 1 ? '' : 's'} for ${person.name}`);
+    count_link.addEventListener('click', event => {
+      event.preventDefault();
+      special_filter.value = person.id;
+      renderSpecials();
+      $('#specials-section').scrollIntoView({behavior: 'smooth', block: 'start'});
+    });
+    label.append(element('strong', person.name), count_link);
     const remove = element('button', 'Remove', 'quiet');
     remove.addEventListener('click', () => busy(remove, async () => {
       settings = await api('comedians/remove', {id: person.id}); renderPeople();
@@ -50,14 +62,12 @@ function renderPeople() {
     $('#exceptions').append(exceptions);
   }
 }
-function renderStatus(status) {
-  catalogItems = status.items || [];
-  $('#special-count').textContent = catalogItems.length;
-  $('#connection').textContent = settings.radarrListId ? 'Connected to Radarr' : 'Ready to connect';
-  $('#updated').textContent = 'Daily refresh at 3 AM · America/Detroit';
-  $('#catalog-updated').textContent = status.updatedAt ? 'Updated ' + new Date(status.updatedAt).toLocaleString() : 'Waiting for first refresh';
+function renderSpecials() {
+  const filter_id = $('#special-filter').value;
+  const comedian = settings.comedians.find(person => String(person.id) === filter_id);
+  const filtered_items = catalogItems.filter(movie => !comedian || movie.comedian === comedian.name);
   $('#specials').replaceChildren();
-  const newestFirst = [...catalogItems].sort((a, b) =>
+  const newestFirst = [...filtered_items].sort((a, b) =>
     (b.releaseDate || b.year || '').localeCompare(a.releaseDate || a.year || '') || a.title.localeCompare(b.title));
   for (const movie of newestFirst) {
     const row = element('tr');
@@ -82,7 +92,16 @@ function renderStatus(status) {
     row.append(title, element('td', movie.year), element('td', movie.comedian), element('td', movie.reason), actions);
     $('#specials').append(row);
   }
-  $('#empty').hidden = (status.items || []).length > 0;
+  $('#empty').textContent = comedian ? `No specials currently tracked for ${comedian.name}.` : 'Add a comedian and refresh to start your catalog.';
+  $('#empty').hidden = filtered_items.length > 0;
+}
+function renderStatus(status) {
+  catalogItems = status.items || [];
+  $('#special-count').textContent = catalogItems.length;
+  $('#connection').textContent = settings.radarrListId ? 'Connected to Radarr' : 'Ready to connect';
+  $('#updated').textContent = 'Daily refresh at 3 AM · America/Detroit';
+  $('#catalog-updated').textContent = status.updatedAt ? 'Updated ' + new Date(status.updatedAt).toLocaleString() : 'Waiting for first refresh';
+  renderSpecials();
   $('#review').replaceChildren();
   for (const movie of (status.reviewed || []).filter(row => !row.included)) {
     const row = element('div', undefined, 'review-row');
@@ -118,6 +137,7 @@ async function refreshCatalog() {
 $('#delete-from-radarr').addEventListener('change', event => {
   $('#confirm-exclude').textContent = event.target.checked ? 'Exclude & delete' : 'Exclude from feed';
 });
+$('#special-filter').addEventListener('change', renderSpecials);
 $('#exclude-dialog').addEventListener('close', () => { specialToExclude = null; });
 $('#cancel-exclude').addEventListener('click', () => $('#exclude-dialog').close());
 $('#exclude-form').addEventListener('submit', event => {
@@ -225,7 +245,7 @@ $('#search-form').addEventListener('submit', event => {
     if (!people.length) $('#search-results').append(element('p', 'No matching people found.', 'hint'));
     for (const person of people) {
       const row = element('div', undefined, 'result'); const text = element('div');
-      text.append(element('strong', person.name), element('small', person.knownFor || 'TMDB person ' + person.id));
+      text.append(element('strong', person.name), element('small', person.knownFor || 'No known-for titles listed'));
       const button = element('button', 'Add'); button.type = 'button';
       button.addEventListener('click', () => busy(button, async () => {
         settings = await api('comedians', {id: person.id}); renderPeople(); $('#search-results').replaceChildren(); await refreshCatalog();
