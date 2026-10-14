@@ -168,7 +168,7 @@ async function loadDashboard() {
   if (settings.radarrUrl && settings.hasRadarrKey) {
     try { await loadOptions(); } catch (error) { notify(error.message, true); }
   }
-  $('#dashboard').hidden = false; $('#logout').hidden = false;
+  $('#dashboard').hidden = false; $('#logout').hidden = false; $('#credits').hidden = false;
 }
 $('#setup-form').addEventListener('submit', async event => {
   event.preventDefault(); const button = event.submitter; button.disabled = true;
