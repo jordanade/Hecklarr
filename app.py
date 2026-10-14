@@ -337,6 +337,43 @@ def excludeSpecial(movie_id, delete_from_radarr):
                 'hadFiles': sum(bool(row.get('hasFile')) for row in matches)}
 
 
+def removeComedian(person_id, delete_from_radarr):
+    global SNAPSHOT
+    with REFRESH_LOCK:
+        with LOCK:
+            settings = json.loads(json.dumps(SETTINGS))
+            snapshot = json.loads(json.dumps(SNAPSHOT))
+        person = next((row for row in settings.get('comedians', []) if row['id'] == person_id), None)
+        if person is None:
+            raise ValueError('That comedian is no longer in Hecklarr. Refresh and try again.')
+        movie_ids = {row['tmdbId'] for row in snapshot.get('items', [])
+                     if row.get('personId') == person_id}
+        matches = []
+        if delete_from_radarr and movie_ids:
+            matches = [row for row in radarr('movie', settings)
+                       if int(row.get('tmdbId', 0)) in movie_ids]
+            if any(not row.get('id') for row in matches):
+                raise ValueError('Radarr returned a movie without an ID; no changes were made')
+            try:
+                for row in matches:
+                    radarr(f"movie/{row['id']}?deleteFiles=true", settings, method='DELETE')
+            except ValueError as error:
+                raise ValueError('Radarr deletion did not finish; the comedian remains in Hecklarr. '
+                                 'Some matching movies may already have been removed: ' + str(error)) from None
+
+        saveSettings({'comedians': [row for row in SETTINGS['comedians'] if row['id'] != person_id]})
+        snapshot['items'] = [row for row in snapshot.get('items', []) if row.get('personId') != person_id]
+        snapshot['reviewed'] = [row for row in snapshot.get('reviewed', [])
+                                if row.get('personId') != person_id]
+        snapshot['people'] = [row for row in snapshot.get('people', []) if row.get('id') != person_id]
+        with LOCK:
+            saveJson(STATE_DIR / 'snapshot.json', snapshot)
+            SNAPSHOT = snapshot
+        return {'removedFromRadarr': len(matches),
+                'hadFiles': sum(bool(row.get('hasFile')) for row in matches),
+                'trackedCount': len(movie_ids)}
+
+
 def checkPassword(password, encoded):
     try:
         kind, n, r, p, salt, expected = encoded.split('$')
@@ -539,9 +576,12 @@ class Handler(BaseHTTPRequestHandler):
                         row['name'] = person['name']
                 return self.reply(200, result)
             if self.path == '/api/comedians/remove':
-                with REFRESH_LOCK:
-                    saveSettings({'comedians': [row for row in SETTINGS['comedians'] if row['id'] != int(body['id'])]})
-                return self.reply(200, publicSettings())
+                person_id = int(body.get('id', 0))
+                delete_from_radarr = body.get('deleteFromRadarr', False)
+                if person_id <= 0 or not isinstance(delete_from_radarr, bool):
+                    raise ValueError('Choose a comedian and deletion option')
+                result = removeComedian(person_id, delete_from_radarr)
+                return self.reply(200, {'settings': publicSettings(), **result})
             if self.path == '/api/overrides':
                 with REFRESH_LOCK:
                     people = json.loads(json.dumps(SETTINGS['comedians']))

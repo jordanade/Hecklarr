@@ -148,6 +148,48 @@ class ClassificationTest(unittest.TestCase):
         self.assertEqual([], result['reviewed'])
 
 
+class ComedianRemovalTest(unittest.TestCase):
+    def setUp(self):
+        self.saved = (app.SETTINGS, app.SNAPSHOT, app.STATE_DIR)
+        self.directory = tempfile.TemporaryDirectory()
+        app.STATE_DIR = Path(self.directory.name)
+        app.SETTINGS = {'comedians': [{'id': 52849, 'includeIds': [], 'excludeIds': []},
+                                      {'id': 109708, 'includeIds': [], 'excludeIds': []}]}
+        app.SNAPSHOT = {'items': [{'tmdbId': 100, 'personId': 52849, 'title': 'Tracked special'},
+                                 {'tmdbId': 200, 'personId': 109708, 'title': 'Other special'}],
+                        'reviewed': [{'tmdbId': 101, 'personId': 52849, 'title': 'Left out'}],
+                        'people': [{'id': 52849, 'name': 'Louis C.K.'},
+                                   {'id': 109708, 'name': 'Bill Burr'}]}
+
+    def tearDown(self):
+        app.SETTINGS, app.SNAPSHOT, app.STATE_DIR = self.saved
+        self.directory.cleanup()
+
+    def test_remove_can_delete_radarr_movies_for_tracked_specials(self):
+        calls = []
+        def fake_radarr(path, settings, body=None, method=None):
+            calls.append((path, method))
+            if path == 'movie':
+                return [{'id': 1, 'tmdbId': 100, 'hasFile': True},
+                        {'id': 2, 'tmdbId': 101, 'hasFile': False},
+                        {'id': 3, 'tmdbId': 200, 'hasFile': True}]
+        with patch.object(app, 'radarr', side_effect=fake_radarr):
+            result = app.removeComedian(52849, True)
+        self.assertEqual({'removedFromRadarr': 1, 'hadFiles': 1, 'trackedCount': 1}, result)
+        self.assertEqual([('movie', None), ('movie/1?deleteFiles=true', 'DELETE')], calls)
+        self.assertEqual([109708], [person['id'] for person in app.SETTINGS['comedians']])
+        self.assertEqual([200], [movie['tmdbId'] for movie in app.SNAPSHOT['items']])
+        self.assertEqual([], app.SNAPSHOT['reviewed'])
+        self.assertEqual([109708], [person['id'] for person in app.SNAPSHOT['people']])
+
+    def test_remove_without_delete_leaves_radarr_untouched(self):
+        with patch.object(app, 'radarr') as radarr:
+            result = app.removeComedian(52849, False)
+        radarr.assert_not_called()
+        self.assertEqual({'removedFromRadarr': 0, 'hadFiles': 0, 'trackedCount': 1}, result)
+        self.assertEqual([109708], [person['id'] for person in app.SETTINGS['comedians']])
+
+
 class HttpContractTest(unittest.TestCase):
     def setUp(self):
         self.saved = (app.SETTINGS, app.SNAPSHOT, app.STATE_DIR, app.SESSIONS, app.LAST_ERROR)

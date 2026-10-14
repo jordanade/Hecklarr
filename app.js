@@ -1,6 +1,7 @@
 const $ = (selector) => document.querySelector(selector);
 let settings;
 let specialToExclude;
+let personToRemove;
 let catalogItems = [];
 async function api(path, body) {
   const response = await fetch('/api/' + path, {method: body === undefined ? 'GET' : 'POST',
@@ -53,10 +54,17 @@ function renderPeople() {
     });
     label.append(element('strong', person.name), count_link);
     const remove = element('button', 'Remove', 'quiet');
-    remove.addEventListener('click', () => busy(remove, async () => {
-      settings = await api('comedians/remove', {id: person.id}); renderPeople();
-      await refreshCatalog();
-    }));
+    remove.addEventListener('click', () => {
+      personToRemove = person;
+      const tracked_count = catalogItems.filter(movie => movie.personId === person.id).length;
+      $('#remove-person-name').textContent = person.name;
+      $('#delete-comedian-movies-copy').textContent =
+        `Also remove ${tracked_count} tracked special${tracked_count === 1 ? '' : 's'} from Radarr and delete their movie files, if present.`;
+      $('#delete-comedian-movies').checked = true;
+      $('#remove-person-error').textContent = '';
+      $('#confirm-remove-person').textContent = 'Remove & delete';
+      $('#remove-person-dialog').showModal();
+    });
     row.append(label, remove); $('#comedians').append(row);
     const exceptions = element('p', `${person.name}: included IDs ${(person.includeIds || []).join(', ') || 'none'}; excluded IDs ${(person.excludeIds || []).join(', ') || 'none'}`, 'hint');
     $('#exceptions').append(exceptions);
@@ -137,9 +145,44 @@ async function refreshCatalog() {
 $('#delete-from-radarr').addEventListener('change', event => {
   $('#confirm-exclude').textContent = event.target.checked ? 'Exclude & delete' : 'Exclude from feed';
 });
+$('#delete-comedian-movies').addEventListener('change', event => {
+  $('#confirm-remove-person').textContent = event.target.checked ? 'Remove & delete' : 'Remove comedian';
+});
 $('#special-filter').addEventListener('change', renderSpecials);
 $('#exclude-dialog').addEventListener('close', () => { specialToExclude = null; });
 $('#cancel-exclude').addEventListener('click', () => $('#exclude-dialog').close());
+$('#remove-person-dialog').addEventListener('close', () => { personToRemove = null; });
+$('#cancel-remove-person').addEventListener('click', () => $('#remove-person-dialog').close());
+$('#remove-person-form').addEventListener('submit', event => {
+  event.preventDefault();
+  if (!personToRemove) return;
+  const button = event.submitter;
+  busy(button, async () => {
+    const person = personToRemove;
+    const delete_from_radarr = $('#delete-comedian-movies').checked;
+    let result;
+    try {
+      result = await api('comedians/remove', {id: person.id, deleteFromRadarr: delete_from_radarr});
+    } catch (error) {
+      $('#remove-person-error').textContent = error.message;
+      throw error;
+    }
+    $('#remove-person-dialog').close();
+    settings = result.settings;
+    renderStatus(await api('status'));
+    renderPeople();
+    try {
+      await refreshCatalog();
+    } catch (error) {
+      notify(`${person.name} was removed from Hecklarr, but the catalog could not refresh: ${error.message}`, true);
+      return;
+    }
+    if (!delete_from_radarr) notify(`${person.name} was removed from Hecklarr. Radarr movies and files were left untouched.`);
+    else if (!result.removedFromRadarr) notify(`${person.name} was removed from Hecklarr. No tracked movies were found in Radarr to delete.`);
+    else if (result.hadFiles) notify(`${person.name} was removed from Hecklarr and Radarr; its movie files were deleted.`);
+    else notify(`${person.name} was removed from Hecklarr and Radarr. No movie files were present.`);
+  });
+});
 $('#exclude-form').addEventListener('submit', event => {
   event.preventDefault();
   if (!specialToExclude) return;
