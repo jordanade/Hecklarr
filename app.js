@@ -3,6 +3,7 @@ let settings;
 let specialToExclude;
 let personToRemove;
 let catalogItems = [];
+let reviewedItems = [];
 async function api(path, body) {
   const response = await fetch('/api/' + path, {method: body === undefined ? 'GET' : 'POST',
     headers: {'Content-Type': 'application/json', 'X-Hecklarr': '1'},
@@ -37,6 +38,10 @@ function renderPeople() {
   const selected_filter = special_filter.value;
   special_filter.replaceChildren(new Option('All comedians', ''), ...settings.comedians.map(person => new Option(person.name, person.id)));
   special_filter.value = settings.comedians.some(person => String(person.id) === selected_filter) ? selected_filter : '';
+  const review_filter = $('#review-filter');
+  const selected_review_filter = review_filter.value;
+  review_filter.replaceChildren(new Option('All comedians', ''), ...settings.comedians.map(person => new Option(person.name, person.id)));
+  review_filter.value = settings.comedians.some(person => String(person.id) === selected_review_filter) ? selected_review_filter : '';
   $('#exceptions').replaceChildren();
   for (const person of settings.comedians) {
     const special_count = catalogItems.filter(movie => movie.comedian === person.name).length;
@@ -69,6 +74,7 @@ function renderPeople() {
     const exceptions = element('p', `${person.name}: included IDs ${(person.includeIds || []).join(', ') || 'none'}; excluded IDs ${(person.excludeIds || []).join(', ') || 'none'}`, 'hint');
     $('#exceptions').append(exceptions);
   }
+  renderReviewEntries();
 }
 function renderSpecials() {
   const filter_id = $('#special-filter').value;
@@ -105,13 +111,21 @@ function renderSpecials() {
 }
 function renderStatus(status) {
   catalogItems = status.items || [];
+  reviewedItems = (status.reviewed || []).filter(row => !row.included);
   $('#special-count').textContent = catalogItems.length;
   $('#connection').textContent = settings.radarrListId ? 'Connected to Radarr' : 'Ready to connect';
   $('#updated').textContent = 'Daily refresh at 3 AM · America/Detroit';
   $('#catalog-updated').textContent = status.updatedAt ? 'Updated ' + new Date(status.updatedAt).toLocaleString() : 'Waiting for first refresh';
   renderSpecials();
+  renderReviewEntries();
+  if (status.lastError) notify('Refresh failed: ' + status.lastError +
+    (status.updatedAt ? '. The previous catalog is still available.' : '. Refresh the catalog to reload metadata.'), true);
+}
+function renderReviewEntries() {
+  const filter_id = $('#review-filter').value;
+  const filtered_items = reviewedItems.filter(movie => !filter_id || String(movie.personId) === filter_id);
   $('#review').replaceChildren();
-  for (const movie of (status.reviewed || []).filter(row => !row.included)) {
+  for (const movie of filtered_items) {
     const row = element('div', undefined, 'review-row');
     const description = element('div', undefined, 'review-copy');
     const title_link = element('a', movie.title);
@@ -134,8 +148,8 @@ function renderStatus(status) {
     row.append(description, include);
     $('#review').append(row);
   }
-  if (status.lastError) notify('Refresh failed: ' + status.lastError +
-    (status.updatedAt ? '. The previous catalog is still available.' : '. Refresh the catalog to reload metadata.'), true);
+  $('#review-empty').hidden = filtered_items.length > 0;
+  $('#review-empty').textContent = filter_id ? 'No entries left out for this comedian.' : 'No entries left out.';
 }
 async function refreshCatalog() {
   notify('Checking TMDB for specials…');
@@ -152,6 +166,7 @@ $('#delete-comedian-movies').addEventListener('change', event => {
   $('#confirm-remove-person').textContent = event.target.checked ? 'Remove & delete' : 'Remove comedian';
 });
 $('#special-filter').addEventListener('change', renderSpecials);
+$('#review-filter').addEventListener('change', renderReviewEntries);
 $('#exclude-dialog').addEventListener('close', () => { specialToExclude = null; });
 $('#cancel-exclude').addEventListener('click', () => $('#exclude-dialog').close());
 $('#remove-person-dialog').addEventListener('close', () => { personToRemove = null; });
