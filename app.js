@@ -4,6 +4,9 @@ let specialToExclude;
 let personToRemove;
 let catalogItems = [];
 let reviewedItems = [];
+let checkedComedians = new Set();
+let catalogRefreshPending = false;
+let catalogRefreshError = false;
 let downloadStatuses = {items: {}, updatedAt: null, lastError: null};
 let downloadStatusRequest = false;
 let downloadStatusGeneration = 0;
@@ -83,13 +86,17 @@ function renderPeople() {
   review_filter.value = settings.comedians.some(person => String(person.id) === selected_review_filter) ? selected_review_filter : '';
   $('#exceptions').replaceChildren();
   for (const person of settings.comedians) {
-    const special_count = catalogItems.filter(movie => movie.comedian === person.name).length;
+    const special_count = catalogItems.filter(movie => movie.personId === person.id).length;
+    const checked = checkedComedians.has(person.id);
+    const count_copy = checked ? `${special_count} special${special_count === 1 ? '' : 's'} tracked`
+      : catalogRefreshPending ? 'Checking for specials…'
+      : catalogRefreshError ? 'Could not check specials' : 'Not checked yet';
     select.add(new Option(person.name, person.id));
     const row = element('div', undefined, 'person');
     const label = element('div');
-    const count_link = element('a', `${special_count} special${special_count === 1 ? '' : 's'} tracked`, 'special-count-link');
+    const count_link = element('a', count_copy, 'special-count-link');
     count_link.href = '#specials-section';
-    count_link.setAttribute('aria-label', `Show ${special_count} special${special_count === 1 ? '' : 's'} for ${person.name}`);
+    count_link.setAttribute('aria-label', checked ? `Show ${special_count} special${special_count === 1 ? '' : 's'} for ${person.name}` : `Show specials for ${person.name}`);
     count_link.addEventListener('click', event => {
       event.preventDefault();
       special_filter.value = person.id;
@@ -152,6 +159,8 @@ function renderSpecials() {
   renderDownloadBadges();
 }
 function renderStatus(status) {
+  checkedComedians = new Set((status.people || []).map(person => person.id));
+  catalogRefreshError = Boolean(status.lastError);
   if (status.downloadStatuses) downloadStatuses = status.downloadStatuses;
   catalogItems = status.items || [];
   reviewedItems = (status.reviewed || []).filter(row => !row.included);
@@ -195,12 +204,21 @@ function renderReviewEntries() {
   $('#review-empty').textContent = filter_id ? 'No entries left out for this comedian.' : 'No entries left out.';
 }
 async function refreshCatalog() {
-  notify('Checking TMDB for specials…');
-  const status = await api('refresh', {});
-  settings = await api('settings');
-  renderStatus(status);
+  catalogRefreshPending = true;
   renderPeople();
-  notify(`Catalog refreshed: ${status.items.length} specials.`);
+  notify('Checking TMDB for specials…');
+  try {
+    const status = await api('refresh', {});
+    settings = await api('settings');
+    renderStatus(status);
+    notify(`Catalog refreshed: ${status.items.length} specials.`);
+  } catch (error) {
+    catalogRefreshError = true;
+    throw error;
+  } finally {
+    catalogRefreshPending = false;
+    renderPeople();
+  }
 }
 $('#delete-from-radarr').addEventListener('change', event => {
   $('#confirm-exclude').textContent = event.target.checked ? 'Exclude & delete' : 'Exclude from feed';
