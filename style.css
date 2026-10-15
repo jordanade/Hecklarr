@@ -122,6 +122,13 @@ th { text-align: left; color: var(--muted); font-size: 12px; font-weight: 500; w
 th:last-child { text-align: right; }
 td { padding: 12px 14px 12px 0; font-size: 13.2px; vertical-align: middle; border-bottom: 1px solid var(--line); }
 td:first-child { font-size: 14px; }
+.download-state { display: flex; align-items: center; gap: 6px; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.4; white-space: nowrap; }
+.download-state::before { content: ''; width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%; background: currentColor; }
+.status-downloaded::before { background: #a3ba7c; }
+.status-downloading::before, .status-importing::before { background: #90b1c6; }
+.status-queued::before, .status-paused::before, .status-warning::before, .status-unreleased::before { background: #c9ae73; }
+.status-failed::before, .status-import-blocked::before, .status-client-unavailable::before, .status-unavailable::before { background: #db8f7b; }
+.download-state.is-stale::after { content: ' · stale'; }
 td:nth-child(2) { font-variant-numeric: tabular-nums; }
 td:nth-child(4) { color: var(--muted); font-size: 12px; }
 td:last-child, th:last-child { padding-right: 0; }

@@ -41,6 +41,8 @@ Removing a comedian removes their titles from the feed. **Exclude this** opens a
 
 TMDB metadata can be incomplete, and an item in Hecklarr does not guarantee a release is available from your indexers.
 
+Badges beneath each title show its Radarr download status. Status refreshes in the background every minute; if Radarr is unavailable, Hecklarr keeps the last known status and marks it stale.
+
 ## TMDB data and credits
 
 Each installation uses its own TMDB API key or Read Access Token. TMDB data and branding are governed by [TMDB's API terms](https://www.themoviedb.org/api-terms-of-use); commercial use requires a separate agreement. The app includes TMDB's required attribution and logo; see [third-party notices](THIRD_PARTY_NOTICES.md).

@@ -4,10 +4,20 @@ let specialToExclude;
 let personToRemove;
 let catalogItems = [];
 let reviewedItems = [];
-async function api(path, body) {
+let downloadStatuses = {items: {}, updatedAt: null, lastError: null};
+let downloadStatusRequest = false;
+let downloadStatusGeneration = 0;
+const downloadLabels = {
+  downloaded: 'Downloaded', downloading: 'Downloading', queued: 'Queued', paused: 'Paused',
+  importing: 'Importing', 'import-blocked': 'Import blocked', failed: 'Failed', warning: 'Warning',
+  'client-unavailable': 'Download client unavailable', unreleased: 'Unreleased', missing: 'Missing',
+  unmonitored: 'Unmonitored', 'not-in-radarr': 'Not in Radarr', unknown: 'Unknown',
+  checking: 'Checking…', unavailable: 'Unavailable'
+};
+async function api(path, body, signal) {
   const response = await fetch('/api/' + path, {method: body === undefined ? 'GET' : 'POST',
     headers: {'Content-Type': 'application/json', 'X-Hecklarr': '1'},
-    body: body === undefined ? undefined : JSON.stringify(body)});
+    body: body === undefined ? undefined : JSON.stringify(body), signal});
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Request failed');
   return result;
@@ -29,6 +39,35 @@ async function busy(button, action) {
   finally { button.disabled = false; }
 }
 function formData(form) { return Object.fromEntries(new FormData(form).entries()); }
+function renderDownloadBadges() {
+  for (const badge of document.querySelectorAll('#specials .download-state')) {
+    const cached = downloadStatuses.items[badge.dataset.tmdbId];
+    const fallback = downloadStatuses.lastError ? 'unavailable' : 'checking';
+    const state = Object.hasOwn(downloadLabels, cached) ? cached : fallback;
+    badge.textContent = downloadLabels[state];
+    badge.className = 'download-state status-' + state;
+    if (cached && downloadStatuses.lastError) badge.classList.add('is-stale');
+    const checked = downloadStatuses.updatedAt ? 'Last checked ' + new Date(downloadStatuses.updatedAt).toLocaleString() : 'Waiting for Radarr status';
+    badge.title = checked + (downloadStatuses.lastError ? '. ' + downloadStatuses.lastError + '. Showing the last known status when available.' : '');
+  }
+}
+async function loadDownloadStatuses() {
+  if (downloadStatusRequest || !settings?.hasRadarrKey || $('#dashboard').hidden) return;
+  downloadStatusRequest = true;
+  const generation = downloadStatusGeneration;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const result = await api('download-status', undefined, controller.signal);
+    if (generation === downloadStatusGeneration) downloadStatuses = result;
+  } catch (error) {
+    if (generation === downloadStatusGeneration) downloadStatuses = {...downloadStatuses, lastError: error.message};
+  } finally {
+    clearTimeout(timeout);
+    downloadStatusRequest = false;
+  }
+  renderDownloadBadges();
+}
 function renderPeople() {
   $('#people-count').textContent = settings.comedians.length;
   $('#comedians').replaceChildren();
@@ -100,7 +139,9 @@ function renderSpecials() {
       $('#confirm-exclude').textContent = 'Exclude & delete';
       $('#exclude-dialog').showModal();
     });
-    title.append(link);
+    const badge = element('span', 'Checking…', 'download-state status-checking');
+    badge.dataset.tmdbId = movie.tmdbId;
+    title.append(link, badge);
     const actions = element('td', undefined, 'table-actions');
     actions.append(exclude);
     row.append(title, element('td', movie.year), element('td', movie.comedian), element('td', movie.reason), actions);
@@ -108,8 +149,10 @@ function renderSpecials() {
   }
   $('#empty').textContent = comedian ? `No specials currently tracked for ${comedian.name}.` : 'Add a comedian and refresh to start your catalog.';
   $('#empty').hidden = filtered_items.length > 0;
+  renderDownloadBadges();
 }
 function renderStatus(status) {
+  if (status.downloadStatuses) downloadStatuses = status.downloadStatuses;
   catalogItems = status.items || [];
   reviewedItems = (status.reviewed || []).filter(row => !row.included);
   $('#special-count').textContent = catalogItems.length;
@@ -235,6 +278,7 @@ async function loadOptions() {
   $('#load-options').textContent = 'Reconnect Radarr';
 }
 async function loadDashboard() {
+  downloadStatusGeneration++;
   settings = await api('settings');
   $('#setup').hidden = true; $('#login').hidden = true;
   const library_ready = Boolean(settings.radarrListId || (settings.radarrUrl && settings.hasRadarrKey));
@@ -255,6 +299,7 @@ async function loadDashboard() {
     try { await loadOptions(); } catch (error) { notify(error.message, true); }
   }
   $('#dashboard').hidden = false; $('#logout').hidden = false; $('#credits').hidden = false;
+  void loadDownloadStatuses();
 }
 $('#setup-form').addEventListener('submit', async event => {
   event.preventDefault(); const button = event.submitter; button.disabled = true;
@@ -329,3 +374,9 @@ $('#override-form').addEventListener('submit', event => {
     else { $('#login').hidden = false; $('#login-form').elements.username.value = auth.username; }
   } catch (error) { $('#login-error').textContent = error.message; }
 })();
+setInterval(() => {
+  if (document.visibilityState === 'visible') void loadDownloadStatuses();
+}, 15000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') void loadDownloadStatuses();
+});

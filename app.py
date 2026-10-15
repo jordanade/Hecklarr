@@ -29,6 +29,9 @@ SNAPSHOT = {}
 LAST_ERROR = None
 CACHE_MAX_AGE = dt.timedelta(days=180)
 PASSWORD_SLOTS = threading.BoundedSemaphore(2)
+DOWNLOAD_STATUSES = {'items': {}, 'updatedAt': None, 'lastError': None}
+DOWNLOAD_REFRESH = threading.Event()
+DOWNLOAD_POLL_SECONDS = 60
 
 
 class SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -122,12 +125,17 @@ def saveJson(path, data):
 
 
 def saveSettings(patch):
+    global DOWNLOAD_STATUSES
     with LOCK:
+        previous_radarr = (SETTINGS.get('radarrUrl'), SETTINGS.get('radarrApiKey'))
         SETTINGS.update(patch)
         # Keep selection/exception IDs as preferences, not cached TMDB names.
         for person in SETTINGS.get('comedians', []):
             person.pop('name', None)
         saveJson(STATE_DIR / 'settings.json', SETTINGS)
+        if previous_radarr != (SETTINGS.get('radarrUrl'), SETTINGS.get('radarrApiKey')):
+            DOWNLOAD_STATUSES = {'items': {}, 'updatedAt': None, 'lastError': None}
+            DOWNLOAD_REFRESH.set()
 
 
 def loadSettings():
@@ -189,6 +197,112 @@ def radarr(path, settings, body=None, method=None):
         raise ValueError('Add the Radarr URL and API key in Settings')
     return requestJson(settings['radarrUrl'].rstrip('/') + '/api/v3/' + path,
                        settings['radarrApiKey'], body, method)
+
+
+def movieDownloadState(movie, queued):
+    if movie is None:
+        return 'not-in-radarr'
+    if movie.get('hasFile'):
+        return 'downloaded'
+    states = []
+    for row in queued:
+        status = (row.get('status') or '').lower()
+        tracked = (row.get('trackedDownloadState') or '').lower()
+        if tracked == 'importblocked':
+            state = 'import-blocked'
+        elif status == 'failed' or tracked in ['downloadfailed', 'importfailed']:
+            state = 'failed'
+        elif status == 'downloadclientunavailable':
+            state = 'client-unavailable'
+        elif status == 'paused':
+            state = 'paused'
+        elif status == 'warning' or (row.get('trackedDownloadStatus') or '').lower() == 'warning':
+            state = 'warning'
+        elif status == 'completed' or tracked in ['importpending', 'importing']:
+            state = 'importing'
+        elif status == 'downloading':
+            state = 'downloading'
+        elif status in ['queued', 'delay']:
+            state = 'queued'
+        else:
+            state = 'unknown'
+        states.append(state)
+    if states:
+        priority = ['import-blocked', 'failed', 'client-unavailable', 'paused', 'warning',
+                    'importing', 'downloading', 'queued', 'unknown']
+        return min(states, key=priority.index)
+    if movie.get('monitored') is False:
+        return 'unmonitored'
+    if movie.get('status') in ['announced', 'inCinemas']:
+        return 'unreleased'
+    return 'missing'
+
+
+def fetchDownloadStatuses(settings, movie_ids, fetch=radarr):
+    if not movie_ids:
+        return {}
+    movies = fetch('movie', settings)
+    if not isinstance(movies, list):
+        raise ValueError('Invalid Radarr movie response')
+    by_tmdb = {row['tmdbId']: row for row in movies if row.get('tmdbId') in movie_ids}
+    queued = {}
+    page = 1
+    seen = 0
+    while True:
+        data = fetch(f'queue?page={page}&pageSize=250&includeUnknownMovieItems=false', settings)
+        if not isinstance(data, dict):
+            raise ValueError('Invalid Radarr queue response')
+        records = data.get('records')
+        total = data.get('totalRecords')
+        if not isinstance(records, list) or not isinstance(total, int) or total < 0:
+            raise ValueError('Invalid Radarr queue response')
+        for row in records:
+            queued.setdefault(row.get('movieId'), []).append(row)
+        seen += len(records)
+        if seen >= total:
+            break
+        if not records or page >= 100:
+            raise ValueError('Radarr queue could not be read completely')
+        page += 1
+    return {str(movie_id): movieDownloadState(by_tmdb.get(movie_id),
+                queued.get(by_tmdb.get(movie_id, {}).get('id'), [])) for movie_id in movie_ids}
+
+
+def updateDownloadStatuses():
+    global DOWNLOAD_STATUSES
+    with LOCK:
+        settings = dict(SETTINGS)
+        movie_ids = {row['tmdbId'] for row in SNAPSHOT.get('items', [])}
+    if not settings.get('radarrUrl') or not settings.get('radarrApiKey'):
+        return
+    try:
+        items = fetchDownloadStatuses(settings, movie_ids)
+        result = {'items': items, 'updatedAt': now(), 'lastError': None}
+    except Exception:
+        # Keep the last successful result; an outage must not turn downloads into "missing".
+        result = None
+    with LOCK:
+        if ((settings.get('radarrUrl'), settings.get('radarrApiKey'))
+                != (SETTINGS.get('radarrUrl'), SETTINGS.get('radarrApiKey'))):
+            return
+        if result is None:
+            DOWNLOAD_STATUSES = {**DOWNLOAD_STATUSES, 'lastError': 'Could not update Radarr download status'}
+        else:
+            DOWNLOAD_STATUSES = result
+
+
+def cachedDownloadStatuses():
+    with LOCK:
+        tracked = {str(row['tmdbId']) for row in SNAPSHOT.get('items', [])}
+        return {**DOWNLOAD_STATUSES,
+                'items': {key: state for key, state in DOWNLOAD_STATUSES['items'].items() if key in tracked}}
+
+
+def scheduledDownloadStatuses():
+    while True:
+        DOWNLOAD_REFRESH.clear()
+        updateDownloadStatuses()
+        DOWNLOAD_REFRESH.wait(DOWNLOAD_POLL_SECONDS)
 
 
 def normalize(value):
@@ -314,6 +428,7 @@ def refresh(sync=False):
                 saveJson(STATE_DIR / 'snapshot.json', snapshot)
                 SNAPSHOT = snapshot
                 LAST_ERROR = None
+            DOWNLOAD_REFRESH.set()
             print(f'{now()} Refreshed {len(snapshot["items"])} specials', flush=True)
             if sync and settings.get('radarrListId'):
                 radarr('command', settings, {'name': 'ImportListSync', 'definitionId': settings['radarrListId']})
@@ -554,7 +669,10 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/settings':
                 return self.reply(200, publicSettings())
             if path == '/api/status':
-                return self.reply(200, {**SNAPSHOT, 'lastError': LAST_ERROR})
+                return self.reply(200, {**SNAPSHOT, 'lastError': LAST_ERROR,
+                                        'downloadStatuses': cachedDownloadStatuses()})
+            if path == '/api/download-status':
+                return self.reply(200, cachedDownloadStatuses())
             if path == '/api/search':
                 term = query.get('q', [''])[0].strip()
                 if len(term) < 2:
@@ -745,6 +863,7 @@ def main():
         SESSIONS = json.loads((STATE_DIR / 'sessions.json').read_text())
     threading.Thread(target=scheduledRefresh, daemon=True).start()
     threading.Thread(target=maintainMetadata, daemon=True).start()
+    threading.Thread(target=scheduledDownloadStatuses, daemon=True).start()
     def initialRefresh():
         try:
             refresh()
