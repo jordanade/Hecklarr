@@ -1,0 +1,411 @@
+{
+  "verifiedOn": "2026-10-15",
+  "note": "Minimal metadata shapes from the coverage audit. Overviews are short synthetic paraphrases preserving the matching evidence, not TMDB synopsis copies.",
+  "specials": [
+    {
+      "person": {
+        "id": 60278,
+        "name": "Maria Bamford"
+      },
+      "movie": {
+        "id": 455601,
+        "title": "Maria Bamford: Old Baby",
+        "runtime": 64,
+        "overview": "Maria Bamford explores everyday life in unexpected places.",
+        "genres": [
+          {
+            "id": 35
+          },
+          {
+            "id": 99
+          }
+        ],
+        "keywords": {
+          "keywords": []
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 60278,
+              "character": "",
+              "order": 0
+            }
+          ],
+          "crew": [
+            {
+              "id": 60278,
+              "job": "Writer"
+            },
+            {
+              "id": 19509,
+              "job": "Director"
+            }
+          ]
+        }
+      },
+      "sourceUrl": "https://mariabamford.com/specials"
+    },
+    {
+      "person": {
+        "id": 1123616,
+        "name": "Gary Gulman"
+      },
+      "movie": {
+        "id": 396109,
+        "title": "Gary Gulman: It's About Time",
+        "runtime": 65,
+        "overview": "Netflix presents standup by Gary Gulman.",
+        "genres": [
+          {
+            "id": 35
+          }
+        ],
+        "keywords": {
+          "keywords": [
+            {
+              "id": 9841
+            }
+          ]
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 1123616,
+              "character": "",
+              "order": 0
+            }
+          ],
+          "crew": [
+            {
+              "id": 1123616,
+              "job": "Director"
+            },
+            {
+              "id": 1123616,
+              "job": "Writer"
+            }
+          ]
+        }
+      },
+      "sourceUrl": "https://www.youtube.com/watch?v=GT4BEeftCtA"
+    },
+    {
+      "person": {
+        "id": 220088,
+        "name": "Tig Notaro"
+      },
+      "movie": {
+        "id": 355177,
+        "title": "Tig Notaro: Boyish Girl Interrupted",
+        "runtime": 55,
+        "overview": "Tig Notaro tells personal stories during her one-hour show.",
+        "genres": [
+          {
+            "id": 35
+          }
+        ],
+        "keywords": {
+          "keywords": [
+            {
+              "id": 187056
+            }
+          ]
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 220088,
+              "character": "Self",
+              "order": 0
+            }
+          ],
+          "crew": [
+            {
+              "id": 84074,
+              "job": "Director"
+            },
+            {
+              "id": 220088,
+              "job": "Director"
+            },
+            {
+              "id": 220088,
+              "job": "Screenplay"
+            }
+          ]
+        }
+      },
+      "sourceUrl": "https://www.hbo.com/specials"
+    },
+    {
+      "person": {
+        "id": 2600521,
+        "name": "Josh Johnson"
+      },
+      "movie": {
+        "id": 843407,
+        "title": "Josh Johnson: # (Hashtag)",
+        "runtime": 60,
+        "overview": "Josh Johnson presents his first comedy special.",
+        "genres": [
+          {
+            "id": 35
+          }
+        ],
+        "keywords": {
+          "keywords": []
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 2600521,
+              "character": "",
+              "order": 0
+            },
+            {
+              "id": 131133,
+              "character": "",
+              "order": 1
+            }
+          ],
+          "crew": [
+            {
+              "id": 1137548,
+              "job": "Director"
+            }
+          ]
+        }
+      },
+      "sourceUrl": "https://www.paramountplus.com/movies/video/K3ybt7y_R_No9QSCj5ZNZuh2Fxwj0lHr/"
+    },
+    {
+      "person": {
+        "id": 2600521,
+        "name": "Josh Johnson"
+      },
+      "movie": {
+        "id": 1394888,
+        "title": "Freshman Fifteen: A Stand Up Comedy Film",
+        "runtime": 53,
+        "overview": "Josh Johson ends his Freshman Tour in Brooklyn.",
+        "genres": [
+          {
+            "id": 35
+          }
+        ],
+        "keywords": {
+          "keywords": []
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 2600521,
+              "character": "Self",
+              "order": 0
+            },
+            {
+              "id": 1931623,
+              "character": "Self",
+              "order": 1
+            },
+            {
+              "id": 5087678,
+              "character": "Self",
+              "order": 2
+            }
+          ],
+          "crew": [
+            {
+              "id": 2600521,
+              "job": "Writer"
+            },
+            {
+              "id": 4962453,
+              "job": "Director"
+            }
+          ]
+        }
+      },
+      "sourceUrl": "https://www.filmindependent.org/sponsored-projects/happy-accidents/"
+    },
+    {
+      "person": {
+        "id": 3214,
+        "name": "Steven Wright"
+      },
+      "movie": {
+        "id": 55882,
+        "title": "A Steven Wright Special",
+        "runtime": 60,
+        "overview": "Steven Wright performs his surreal one-liners.",
+        "genres": [
+          {
+            "id": 35
+          }
+        ],
+        "keywords": {
+          "keywords": []
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 3214,
+              "character": "Himself",
+              "order": 0
+            }
+          ],
+          "crew": [
+            {
+              "id": 3214,
+              "job": "Writer"
+            },
+            {
+              "id": 71031,
+              "job": "Writer"
+            },
+            {
+              "id": 1227247,
+              "job": "Director"
+            }
+          ]
+        }
+      },
+      "sourceUrl": "https://www.stevenwright.com/about-steven/"
+    },
+    {
+      "person": {
+        "id": 1659144,
+        "name": "Julio Torres"
+      },
+      "movie": {
+        "id": 612392,
+        "title": "My Favorite Shapes by Julio Torres",
+        "runtime": 57,
+        "overview": "Torres presents objects and tells stories about their lives.",
+        "genres": [
+          {
+            "id": 35
+          },
+          {
+            "id": 10770
+          }
+        ],
+        "keywords": {
+          "keywords": []
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 1659144,
+              "character": "Self",
+              "order": 0
+            },
+            {
+              "id": 54693,
+              "character": "Shoe (voice)",
+              "order": 1
+            },
+            {
+              "id": 30614,
+              "character": "Blue Penguin (voice)",
+              "order": 2
+            },
+            {
+              "id": 1179651,
+              "character": "Cactus (voice)",
+              "order": 3
+            }
+          ],
+          "crew": [
+            {
+              "id": 1640646,
+              "job": "Director"
+            },
+            {
+              "id": 1659144,
+              "job": "Writer"
+            }
+          ]
+        }
+      },
+      "sourceUrl": "https://press.wbd.com/us/media-release/hbo-0/julio-torres-debuts-first-comedy-special-hbo-my-favorite-shapes-julio-torres"
+    },
+    {
+      "person": {
+        "id": 135855,
+        "name": "Jim Norton"
+      },
+      "movie": {
+        "id": 446048,
+        "title": "Jim Norton: Mouthful of Shame",
+        "runtime": 61,
+        "overview": "Jim Norton takes on romance and desire.",
+        "genres": [
+          {
+            "id": 35
+          },
+          {
+            "id": 10770
+          },
+          {
+            "id": 99
+          }
+        ],
+        "keywords": {
+          "keywords": [
+            {
+              "id": 3485
+            },
+            {
+              "id": 6415
+            },
+            {
+              "id": 11316
+            },
+            {
+              "id": 9964
+            },
+            {
+              "id": 11634
+            }
+          ]
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 135855,
+              "character": "Self",
+              "order": 0
+            },
+            {
+              "id": 52849,
+              "character": "Self (uncredited)",
+              "order": 1
+            },
+            {
+              "id": 380,
+              "character": "Self (uncredited)",
+              "order": 2
+            },
+            {
+              "id": 17835,
+              "character": "Self (uncredited)",
+              "order": 3
+            }
+          ],
+          "crew": [
+            {
+              "id": 1827779,
+              "job": "Director"
+            },
+            {
+              "id": 135855,
+              "job": "Writer"
+            }
+          ]
+        }
+      },
+      "sourceUrl": "https://media.netflix.com/en/only-on-netflix/80134967"
+    }
+  ]
+}

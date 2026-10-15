@@ -1,0 +1,26 @@
+[
+  {
+    "movieId": 455601,
+    "personId": 60278,
+    "title": "Maria Bamford: Old Baby",
+    "sourceUrl": "https://mariabamford.com/specials",
+    "verifiedOn": "2026-10-15",
+    "note": "TMDB has no performer role or stand-up keyword and also tags this special as Documentary."
+  },
+  {
+    "movieId": 612392,
+    "personId": 1659144,
+    "title": "My Favorite Shapes by Julio Torres",
+    "sourceUrl": "https://press.wbd.com/us/media-release/hbo-0/julio-torres-debuts-first-comedy-special-hbo-my-favorite-shapes-julio-torres",
+    "verifiedOn": "2026-10-15",
+    "note": "TMDB has no stand-up keyword; the title and fictional voice cameos do not satisfy the conservative self-performance fallback."
+  },
+  {
+    "movieId": 446048,
+    "personId": 135855,
+    "title": "Jim Norton: Mouthful of Shame",
+    "sourceUrl": "https://media.netflix.com/en/only-on-netflix/80134967",
+    "verifiedOn": "2026-10-15",
+    "note": "TMDB has no stand-up keyword, tags this special as Documentary, and includes uncredited guests."
+  }
+]

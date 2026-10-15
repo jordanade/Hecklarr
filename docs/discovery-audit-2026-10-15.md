@@ -2,7 +2,23 @@
 
 Checked October 15, 2026, against live TMDB data and the artist, distributor, and broadcaster sources linked below.
 
-**Hecklarr does not currently find every special.** The missing-keyword fix for Sheng Wang also recovers 16 other movie entries across the example pool. Eight further full-length performances are still rejected, and there are additional gaps for television episodes and incomplete movie records.
+**Hecklarr does not find every special.** At the audit baseline, the missing-keyword fix for Sheng Wang recovered 16 other movie entries across the example pool. Eight further full-length performances were still rejected. The follow-up below resolves those eight; gaps remain for television episodes and incomplete movie records.
+
+## Follow-up matching fix
+
+Replaying all 844 audited performer/movie pairs after the follow-up produces **132 matches**, up from 124. Exactly the eight confirmed full-length misses below are added; no previously accepted titles drop out and no other titles are added in this sample.
+
+- Blank roles can qualify when a movie has explicit stand-up/comedy-special description, exact `Comedian: Subtitle` billing, a lead credit, a comedy genre, at least 20 minutes of runtime, and no Documentary genre. This resolves *It's About Time* and *# (Hashtag)*.
+- The written self-performance fallback also recognizes `Screenplay` credits and `A Comedian Special` title forms. This resolves *Boyish Girl Interrupted* and *A Steven Wright Special*.
+- A stand-up comedy title can qualify with a lead self credit, the performer's writing credit, all-self cast, comedy genre, sufficient runtime, and no Documentary genre. This resolves *Freshman Fifteen*.
+- [Three source-verified movie/headliner pairs](../verified-specials.json) cover *Old Baby*, *My Favorite Shapes*, and *Mouthful of Shame*. They retain the performer, lead, runtime, and comedy checks while accommodating contradictory metadata. They do not apply to other titles or guest performers. Explicit user exclusions still win.
+- Regression fixtures contain all eight source-backed cases with minimal metadata and synthetic descriptions. Negative cases cover documentaries, fictional roles, guest/archive credits, missing evidence, and user exclusions.
+
+Validation: all 78 automated tests pass. The Docker image builds, and all eight reference cases pass inside the image with networking disabled and no real configuration mounted. The local service was restarted and passed its health check with its existing settings unchanged.
+
+Correction to the original analysis: `stand[ -]?up` already recognized “standup,” “stand up,” and “stand-up.” Gulman's special was rejected by the earlier missing-role guard, not by spelling.
+
+These changes remain local. No release, deployment, watchlist change, or Radarr sync was performed for the fix.
 
 ## Method and limits
 
@@ -45,14 +61,14 @@ The counts below include every automatically accepted movie entry, including any
 | Neal Brennan | 5 → 5 | [*Women and Black Dudes*](https://www.paramountplus.com/movies/video/gxRR4VIKiwb3CUpbJd2TU_thSeXZdKZU/), [*3 Mics*](https://qr.netflix.com/title/80117452), [*Blocks*](https://www.netflix.com/na/title/81036234), [*Crazy Good*](https://www.netflix.com/na/title/81728557), and the half-hour movie entry match. No omission identified in these checked titles. |
 | Jim Norton | 3 → 5 | *Monster Rain* and *Contextually Inadequate* recovered. *Mouthful of Shame* still rejected despite [Netflix's release announcement](https://media.netflix.com/en/only-on-netflix/80134967). [*Unconceivable*](https://www.jimnorton.com/) matches. The *One Night Stand* movie entry is also rejected for missing genres. |
 
-## Confirmed full-length false negatives remaining
+## Confirmed full-length false negatives at the audit baseline
 
 These eight titles **already reach the classifier through movie cast credits**. The discovery step is not the cause of these misses. All have TMDB movie IDs usable for explicit inclusion.
 
 | Comedian / special | TMDB movie | Why it is rejected |
 | --- | --- | --- |
 | Maria Bamford — *Old Baby* | [455601](https://www.themoviedb.org/movie/455601) | Empty performer role and no stand-up keyword. Also tagged Documentary, so the new conservative fallback would still reject it. |
-| Gary Gulman — *It's About Time* | [396109](https://www.themoviedb.org/movie/396109) | Empty performer role and no stand-up keyword. Its description says “standup,” which the description matcher also does not recognize. |
+| Gary Gulman — *It's About Time* | [396109](https://www.themoviedb.org/movie/396109) | Empty performer role and no stand-up keyword. The role guard rejected it before the description matcher could recognize “standup.” |
 | Tig Notaro — *Boyish Girl Interrupted* | [355177](https://www.themoviedb.org/movie/355177) | No stand-up keyword or recognized description phrase; performer writing job is `Screenplay` rather than `Writer`, so the new fallback does not accept it. |
 | Josh Johnson — *# (Hashtag)* | [843407](https://www.themoviedb.org/movie/843407) | Empty performer role and no stand-up keyword, despite an explicit comedy-special description. |
 | Josh Johnson — *Freshman Fifteen: A Stand Up Comedy Film* | [1394888](https://www.themoviedb.org/movie/1394888) | No stand-up keyword. “Stand Up” appears in the title, not the overview; overview misspells the surname as “Johson.” Exact comedian-name title prefix also absent. |
@@ -60,7 +76,7 @@ These eight titles **already reach the classifier through movie cast credits**. 
 | Julio Torres — *My Favorite Shapes by Julio Torres* | [612392](https://www.themoviedb.org/movie/612392) | No stand-up keyword or recognized overview phrase. The title uses “by Julio Torres”; voice cameos are fictional objects rather than self roles. [HBO explicitly confirms the special and voice cameos](https://press.wbd.com/us/media-release/hbo-0/julio-torres-debuts-first-comedy-special-hbo-my-favorite-shapes-julio-torres). |
 | Jim Norton — *Mouthful of Shame* | [446048](https://www.themoviedb.org/movie/446048) | No stand-up keyword or recognized overview phrase. Documentary genre and uncredited guest cameos disqualify the new fallback. The selected lead performer himself is credited normally. |
 
-These were left unchanged during the research audit. Their precise counterexamples should inform a separate matching change rather than dropping all role, genre, or documentary protections at once.
+These were left unchanged during the research audit, then resolved by the follow-up above. The original rejection reasons are preserved here as the evidence behind the changes.
 
 ## Short specials, series, and packaging
 
@@ -82,7 +98,7 @@ Hecklarr currently reads only movie cast credits; it does not collect TV episode
 - Documentary *Tig*, Bamford's *Paralyzed by Hope*, and acting films remain excluded in this run. Simply accepting every self credit or every movie named after a comedian would weaken that protection.
 - A manual inclusion intentionally bypasses the automatic rules, and accepted titles are retained on subsequent refreshes if metadata weakens. Actual configured lists therefore need separate review; a fresh classifier audit cannot validate those choices.
 
-## Recommended next work
+## Recommendations recorded at the audit baseline
 
 1. Add regression cases for the eight confirmed full-length misses, then make small evidence-based matching changes. Account for blank roles, `standup`/`stand up`/`stand-up`, title-based descriptions, `Screenplay`, and guest cameos without treating every self-led documentary as stand-up.
 2. Keep explicit movie-ID inclusion for ambiguous packaging and incomplete records. Clearer review reasons can explain when a missing genre or role prevents automatic acceptance.

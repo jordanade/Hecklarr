@@ -32,6 +32,8 @@ PASSWORD_SLOTS = threading.BoundedSemaphore(2)
 DOWNLOAD_STATUSES = {'items': {}, 'updatedAt': None, 'lastError': None}
 DOWNLOAD_REFRESH = threading.Event()
 DOWNLOAD_POLL_SECONDS = 60
+VERIFIED_SPECIALS = {(entry['movieId'], entry['personId']) for entry in
+                     json.loads(Path(__file__).with_name('verified-specials.json').read_text())}
 
 
 class SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -326,30 +328,42 @@ def classify(movie, comedian):
         return False, 'Archive footage or cameo'
     if role and not re.search(r'\b(self|himself|herself|themselves)\b', role):
         return False, 'Acting role'
-    if not role and not standup_keyword:
-        return False, 'Performer role unspecified and no stand-up keyword'
     if performer.get('order') != 0:
         return False, 'Not the lead performer'
     if (movie.get('runtime') or 0) < 20:
         return False, 'Shorter than 20 minutes or runtime unknown'
     if 35 not in [genre['id'] for genre in movie.get('genres', [])]:
         return False, 'Not classified as comedy'
+    # Source-verified movie/person pairs cover contradictory TMDB metadata, not other credits.
+    if (movie_id, comedian['id']) in VERIFIED_SPECIALS:
+        return True, 'Verified stand-up special'
     if standup_keyword:
         return True, 'Lead performer and stand-up keyword'
     named = normalize(comedian['name']) in normalize(movie.get('title', ''))
     description = movie.get('overview', '').lower()
-    if named and re.search(r'stand[ -]?up|comedy special|recorded live|filmed live', description):
+    title = movie.get('title', '')
+    title_prefix, separator, subtitle = title.partition(':')
+    titled_performer = bool(separator and subtitle.strip()
+                           and normalize(title_prefix) == normalize(comedian['name']))
+    documentary = any(genre['id'] == 99 for genre in movie.get('genres', []))
+    standup_description = re.search(r'\bstand[ -]?up\b|\bcomedy special\b', description)
+    # A blank role needs an explicitly described performance with the comedian's title billing.
+    if not role and not (titled_performer and standup_description and not documentary):
+        return False, 'Performer role unspecified and no clear stand-up evidence'
+    if named and (standup_description or re.search(r'\brecorded live\b|\bfilmed live\b', description)):
         return True, 'Named performer and live-special description'
-    title_prefix, separator, subtitle = movie.get('title', '').partition(':')
-    titled_performer = separator and subtitle.strip() and normalize(title_prefix) == normalize(comedian['name'])
-    wrote_performance = any(entry.get('id') == comedian['id'] and entry.get('job') == 'Writer'
+    wrote_performance = any(entry.get('id') == comedian['id'] and entry.get('job') in {'Writer', 'Screenplay'}
                             for entry in movie.get('credits', {}).get('crew', []))
     self_cast = all(re.search(r'\b(self|himself|herself|themselves)\b', (entry.get('character') or '').lower())
                     and not re.search(r'archive|uncredited', (entry.get('character') or '').lower())
                     for entry in all_cast)
-    documentary = any(genre['id'] == 99 for genre in movie.get('genres', []))
-    if titled_performer and wrote_performance and self_cast and not documentary:
+    special_title = normalize(title) in {normalize(comedian['name']) + 'special',
+                                        'a' + normalize(comedian['name']) + 'special'}
+    if (titled_performer or special_title) and wrote_performance and self_cast and not documentary:
         return True, 'Named self-performance and writing credit'
+    if (re.search(r'\bstand[ -]?up comedy\b', title, re.IGNORECASE)
+            and wrote_performance and self_cast and not documentary):
+        return True, 'Lead self-performance and stand-up title'
     return False, 'No clear stand-up classification; review metadata or add an inclusion'
 
 

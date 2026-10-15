@@ -4,7 +4,7 @@ RUN apk add --no-cache tzdata \
     && python -m pip uninstall --yes pip \
     && rm -rf /usr/local/lib/python3.13/ensurepip
 WORKDIR /app
-COPY app.py index.html app.js style.css icon.png tmdb-logo.svg ./
+COPY app.py index.html app.js style.css icon.png tmdb-logo.svg verified-specials.json ./
 ENV PYTHONUNBUFFERED=1 CONFIG_DIR=/config TZ=America/Detroit
 USER 1000:1000
 EXPOSE 6162
