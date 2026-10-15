@@ -84,6 +84,9 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
 .inline { display: flex; align-items: end; gap: 8px; }
 .inline > button { margin-bottom: 16px; }
 .grow { flex: 1; min-width: 0; }
+.radarr-connection { margin-bottom: 20px; }
+.radarr-connection > label { margin-bottom: 10px; }
+.radarr-connection > button { display: inline-block; margin: 0; }
 .wrap { flex-wrap: wrap; }
 #search-form { flex-wrap: nowrap; }
 #search-form > label { min-width: 0; }
