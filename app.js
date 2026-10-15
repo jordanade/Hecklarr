@@ -89,7 +89,7 @@ function updateSearchExample() {
   const different_examples = available_examples.filter(name => name !== previous_example);
   const candidates = different_examples.length ? different_examples : available_examples;
   search_example = candidates[Math.floor(Math.random() * candidates.length)];
-  $('#search').placeholder = search_example || 'Search by comedian name';
+  $('#search').placeholder = search_example ? `E.g., ${search_example}` : 'Search by comedian name';
   try {
     if (search_example) sessionStorage.setItem('hecklarr-search-example', search_example);
   } catch {}
