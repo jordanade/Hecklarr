@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1254" height="1254" viewBox="0 0 256 256">
+  <title>Hecklarr microphone</title>
+  <desc>A microphone and coaxial cable plug on an angled stand, drawn in charcoal ink on pale lime.</desc>
+  <defs>
+    <clipPath id="grille"><ellipse cx="0" cy="-9" rx="54" ry="47"/></clipPath>
+  </defs>
+  <rect width="256" height="256" fill="#dce99b"/>
+  <g fill="#20201e" stroke="#20201e" stroke-linejoin="round">
+    <path d="M 110 268 L 150 181" fill="none" stroke-width="17" stroke-linecap="butt"/>
+    <path d="M 140 163 L 158 175 L 158 186 L 142 190 L 132 174 Z" stroke="none"/>
+    <circle cx="150" cy="181" r="13" stroke="#dce99b" stroke-width="2.5"/>
+    <path d="M 77.875 220.277 C 65 239 21 227 14 246 C 10 260 26 270 32 279" fill="none" stroke-width="10" stroke-linecap="round"/>
+  </g>
+  <!-- Every mic and plug cross-section is centered on local x=0.
+       One transform projects the entire rigid assembly; individual parts cannot bend off-axis. -->
+  <g id="mic-and-plug" transform="translate(188 63) rotate(35)" fill="#20201e">
+    <path id="mic-body" d="M -19 32 L 19 32 L 16 150 L -16 150 Z"/>
+    <path id="plug" d="M -12 150 L 12 150 L 12 180 L 8 192 L -8 192 L -12 180 Z"/>
+    <path d="M -15 150 L 15 150" fill="none" stroke="#dce99b" stroke-width="2.5"/>
+    <path d="M -11 179 L 11 179" fill="none" stroke="#dce99b" stroke-width="2.5"/>
+    <path d="M -11 49 L -12 94 M -13 129 L -13 142" fill="none" stroke="#dce99b" stroke-width="3" stroke-linecap="round"/>
+    <!-- A short sleeve surrounds only the middle of the handle. -->
+    <path d="M -21 101 L 21 101 L 21 124 L -21 124 Z" stroke="#dce99b" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M -15 107 L 14 107" fill="none" stroke="#dce99b" stroke-width="2.5" stroke-linecap="round"/>
+    <ellipse cx="0" cy="24" rx="51" ry="28"/>
+    <ellipse cx="0" cy="-9" rx="56" ry="49"/>
+    <g clip-path="url(#grille)" fill="none" stroke="#dce99b" stroke-width="3.2" stroke-linecap="round">
+      <path d="M -39 -60 C -52 -32 -51 9 -34 43"/>
+      <path d="M -20 -62 C -29 -32 -28 10 -16 43"/>
+      <path d="M 0 -63 C -4 -28 -3 13 1 44"/>
+      <path d="M 20 -62 C 28 -30 29 10 17 43"/>
+      <path d="M 39 -60 C 53 -29 52 10 34 43"/>
+      <path d="M -59 -42 Q 0 -25 59 -42"/>
+      <path d="M -59 -24 Q 0 -8 59 -24"/>
+      <path d="M -59 -6 Q 0 10 59 -6"/>
+      <path d="M -59 12 Q 0 29 59 12"/>
+      <path d="M -59 30 Q 0 47 59 30"/>
+    </g>
+    <ellipse cx="0" cy="-9" rx="56" ry="49" fill="none" stroke="#20201e" stroke-width="3"/>
+    <path d="M -49 20 C -39 48 39 48 49 20" fill="none" stroke="#dce99b" stroke-width="4" stroke-linecap="round"/>
+  </g>
+</svg>
