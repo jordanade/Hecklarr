@@ -26,7 +26,7 @@ Open [http://localhost:6162](http://localhost:6162) on the Docker host. The serv
 1. Create an account and sign in.
 2. Enter your Radarr address and API key, then select **Connect to Radarr**.
 3. Choose a destination folder Radarr can write to and a quality profile.
-4. Add your TMDB key under **TMDB and feed settings**. Set **Feed address for Radarr** to an address Radarr can reach.
+4. Add your TMDB key. Set **Feed address for Radarr** to an address Radarr can reach.
 5. In Radarr, disable cleanup for the Hecklarr import list, then select **Save & apply to Radarr**.
 
 Use an address reachable from the container making the request. For example, containers on a shared Docker network can use `http://radarr:7878` and `http://hecklarr:6162`. If Radarr and Hecklarr do not share a network, use an address reachable through your host or proxy. `localhost` inside a container refers to that container.
