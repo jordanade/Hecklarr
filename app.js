@@ -240,6 +240,8 @@ async function loadDashboard() {
   const library_ready = Boolean(settings.radarrListId || (settings.radarrUrl && settings.hasRadarrKey));
   for (const section of document.querySelectorAll('[data-library-ready]')) section.hidden = !library_ready;
   $('.grid').classList.toggle('setup-only', !library_ready);
+  $('.workspace').classList.toggle('setup-only', !library_ready);
+  if (!library_ready) $('#library-settings').open = true;
   if (!library_ready) $('#settings-form details').open = true;
   const form = $('#settings-form');
   for (const key of ['radarrUrl', 'rootFolderPath', 'feedBaseUrl', 'qualityProfileId']) form.elements[key].value = settings[key] || '';
