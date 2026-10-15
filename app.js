@@ -4,8 +4,7 @@ let search_example;
 const searchExamples = [
   'Bill Burr', 'Louis C.K.', 'Sheng Wang', 'Maria Bamford', 'James Acaster',
   'Taylor Tomlinson', 'Nate Bargatze', 'Gary Gulman', 'Tig Notaro',
-  'Mike Birbiglia', 'Ali Wong', 'Josh Johnson', 'Bo Burnham', 'Ronny Chieng',
-  'Hannah Gadsby', 'Kyle Kinane'
+  'Mike Birbiglia', 'Ali Wong', 'Josh Johnson', 'Bo Burnham', 'Kyle Kinane'
 ];
 let specialToExclude;
 let personToRemove;
