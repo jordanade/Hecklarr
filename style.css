@@ -30,12 +30,13 @@ header { height: 64px; border-bottom: 1px solid var(--line); }
 .brand small { display: block; font-size: 13.2px; color: var(--muted); }
 .mark { width: 32px; height: 32px; border-radius: 5px; }
 main { max-width: 1400px; margin: auto; padding: 26px 24px 24px; }
-.intro { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+.intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; padding-bottom: 20px; margin-bottom: 28px; border-bottom: 1px solid var(--line); }
+.intro-summary { min-width: 0; }
 .intro h1 { margin: 0; font-size: 24.2px; font-weight: 500; line-height: 1.35; letter-spacing: -.3px; }
 h2 { margin: 0 0 18px; font-size: 20.1px; line-height: 1.3; font-weight: 600; letter-spacing: -.35px; }
 h3 { font-size: 16px; font-weight: 600; margin: 24px 0 14px; }
 p { color: var(--muted); margin: 8px 0 18px; }
-.stats { display: flex; align-items: baseline; flex-wrap: wrap; gap: 22px; border-bottom: 1px solid var(--line); padding: 0 0 20px; margin-bottom: 28px; }
+.stats { display: flex; align-items: baseline; flex-wrap: wrap; gap: 22px; margin-top: 18px; }
 .stats > div { display: flex; align-items: baseline; gap: 6px; }
 .stats strong { font-size: 14.4px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .stats span { font-size: 13.2px; color: var(--muted); }
@@ -172,7 +173,6 @@ footer { font-size: 11px; color: var(--muted); padding: 16px 0 8px; }
   .workspace { display: block; }
   .grid { padding: 0; border: 0; }
   #library-settings { margin-bottom: 4px; }
-  .intro { align-items: start; }
   .intro h1 { font-size: 22px; }
   .stats { gap: 16px; flex-wrap: wrap; }
   th, td { white-space: nowrap; }
@@ -180,9 +180,8 @@ footer { font-size: 11px; color: var(--muted); padding: 16px 0 8px; }
 @media (max-width: 520px) {
   .header-inner { padding: 0 18px; }
   main { padding: 22px 18px; }
-  .intro { flex-direction: column; gap: 12px; }
+  .intro { flex-direction: column; align-items: stretch; gap: 18px; margin-bottom: 24px; }
   .refresh-controls { align-items: flex-start; }
-  .stats { margin-bottom: 24px; }
   .section-title { align-items: start; gap: 10px; }
   .section-title > div { width: 100%; }
   .section-title select { width: 100%; }
