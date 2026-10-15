@@ -33,7 +33,7 @@ main { max-width: 1400px; margin: auto; padding: 26px 24px 24px; }
 .intro { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
 .intro h1 { margin: 0; font-size: 22px; font-weight: 500; line-height: 1.35; letter-spacing: -.3px; }
 h2 { margin: 0 0 18px; font-size: 21.16px; line-height: 1.3; font-weight: 600; letter-spacing: -.35px; }
-h3 { font-size: 16px; margin-top: 28px; }
+h3 { font-size: 16px; font-weight: 600; margin: 24px 0 14px; }
 p { color: var(--muted); margin: 8px 0 18px; }
 .stats { display: flex; align-items: center; gap: 22px; border-bottom: 1px solid var(--line); padding: 0 0 20px; margin-bottom: 28px; }
 .stats > div { display: flex; align-items: baseline; gap: 6px; }
@@ -110,6 +110,7 @@ details:not([open]) > summary { margin-bottom: 0; }
 .result button { padding: 6px 10px; }
 .section-title { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin-bottom: 12px; }
 .section-title h2 { margin-bottom: 12px; }
+.section-title h3 { margin: 0 0 12px; }
 .section-title select { width: 220px; margin-top: 0; }
 #catalog-updated { margin-bottom: 7px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .table-wrap { overflow-x: auto; }
