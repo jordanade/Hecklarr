@@ -42,7 +42,7 @@ p { color: var(--muted); margin: 8px 0 18px; }
 .stats > div:last-child { margin-left: auto; gap: 14px; }
 #connection { display: flex; align-items: center; gap: 7px; }
 #connection::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
-.workspace { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 32px; align-items: start; }
+.workspace { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 32px; align-items: start; }
 .grid { min-width: 0; padding-right: 24px; border-right: 1px solid var(--line); }
 .primary { min-width: 0; }
 .card { padding: 14px 0; margin-bottom: 24px; border-top: 1px solid var(--line); }
