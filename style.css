@@ -39,6 +39,7 @@ p { color: var(--muted); margin: 8px 0 18px; }
 .stats { display: flex; align-items: baseline; flex-wrap: wrap; gap: 22px; margin-top: 18px; }
 .stats > div { display: flex; align-items: baseline; gap: 6px; }
 .stats strong { font-size: 14.4px; font-weight: 500; font-variant-numeric: tabular-nums; }
+#people-count, #special-count { font-size: 15.84px; }
 .stats span { font-size: 13.2px; color: var(--muted); }
 .refresh-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
 #updated { font-size: 12px; color: var(--muted); }
