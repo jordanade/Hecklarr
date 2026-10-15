@@ -5,7 +5,9 @@ const searchExamples = [
   'Bill Burr', 'Louis C.K.', 'George Carlin', 'Sheng Wang', 'Maria Bamford',
   'Taylor Tomlinson', 'Nate Bargatze', 'Gary Gulman', 'Tig Notaro',
   'Mike Birbiglia', 'Ali Wong', 'Josh Johnson', 'Bo Burnham', 'Ricky Gervais',
-  'Richard Pryor', 'Chris Rock', 'Bill Hicks', 'Mitch Hedberg', 'Wanda Sykes'
+  'Richard Pryor', 'Chris Rock', 'Bill Hicks', 'Mitch Hedberg', 'Wanda Sykes',
+  'Steven Wright', 'Norm Macdonald', 'Stewart Lee', 'Demetri Martin', 'Joe Pera',
+  'Jacqueline Novak', 'Julio Torres', 'Anthony Jeselnik'
 ];
 let specialToExclude;
 let personToRemove;
