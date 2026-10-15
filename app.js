@@ -242,7 +242,6 @@ async function loadDashboard() {
   $('.grid').classList.toggle('setup-only', !library_ready);
   $('.workspace').classList.toggle('setup-only', !library_ready);
   if (!library_ready) $('#library-settings').open = true;
-  if (!library_ready) $('#settings-form details').open = true;
   const form = $('#settings-form');
   for (const key of ['radarrUrl', 'rootFolderPath', 'feedBaseUrl', 'qualityProfileId']) form.elements[key].value = settings[key] || '';
   if (!settings.feedBaseUrl) form.elements.feedBaseUrl.value = location.origin;

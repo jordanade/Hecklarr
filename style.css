@@ -100,7 +100,6 @@ summary::after { content: "›"; font-size: 20px; line-height: 1; color: var(--m
 details[open] > summary::after { transform: rotate(90deg); }
 summary h2 { margin: 0; }
 details:not([open]) > summary { margin-bottom: 0; }
-#settings-form details { border-top: 1px solid var(--line); padding-top: 12px; }
 .person, .result { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .person strong, .result strong { font-size: 14px; font-weight: 500; }
 .person small, .result small { display: block; font-size: 13.2px; color: var(--muted); }
