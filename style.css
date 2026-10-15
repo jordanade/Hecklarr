@@ -111,7 +111,7 @@ details:not([open]) > summary { margin-bottom: 0; }
 .person small, .result small { display: block; font-size: 13.2px; color: var(--muted); }
 .special-count-link { display: block; font-size: 13.2px; color: var(--muted); text-decoration: none; }
 .special-count-link:hover { color: var(--accent); }
-.person button { border-color: transparent; padding: 6px 0 6px 8px; font-size: 13.2px; color: var(--muted); }
+.person button { flex-shrink: 0; }
 .person button:hover { color: #f0a18d; }
 .result button { padding: 6px 10px; }
 .section-title { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin-bottom: 12px; }
