@@ -98,6 +98,43 @@ class ClassificationTest(unittest.TestCase):
         self.movie['overview'] = 'A film about Louis C.K.'
         self.assertFalse(app.classify(self.movie, self.person)[0])
 
+    def test_performer_titled_written_self_performance_without_keyword_or_special_description(self):
+        person = {'id': 1785090, 'name': 'Sheng Wang'}
+        movie = {'id': 1015999, 'title': 'Sheng Wang: Sweet and Juicy', 'runtime': 60,
+                 'genres': [{'id': 35}], 'keywords': {'keywords': []},
+                 'overview': 'Sheng Wang discusses everyday life.',
+                 'credits': {'cast': [{'id': 1785090, 'character': 'Self', 'order': 0},
+                                      {'id': 591835, 'character': 'Self', 'order': 1}],
+                             'crew': [{'id': 1785090, 'job': 'Writer'}, {'id': 591835, 'job': 'Director'}]}}
+        self.assertEqual((True, 'Named self-performance and writing credit'), app.classify(movie, person))
+        for restriction in ['no_writer', 'other_writer', 'not_titled', 'documentary', 'acting_guest',
+                            'archive_guest', 'unknown_guest', 'missing_lead_role', 'supporting', 'short', 'non_comedy']:
+            with self.subTest(restriction=restriction):
+                candidate = copy.deepcopy(movie)
+                if restriction == 'no_writer':
+                    candidate['credits']['crew'] = []
+                elif restriction == 'other_writer':
+                    candidate['credits']['crew'][0]['id'] = 591835
+                elif restriction == 'not_titled':
+                    candidate['title'] = 'A film about Sheng Wang'
+                elif restriction == 'documentary':
+                    candidate['genres'].append({'id': 99})
+                elif restriction == 'acting_guest':
+                    candidate['credits']['cast'][1]['character'] = 'A character'
+                elif restriction == 'archive_guest':
+                    candidate['credits']['cast'][1]['character'] = 'Self (archive footage)'
+                elif restriction == 'unknown_guest':
+                    candidate['credits']['cast'][1]['character'] = ''
+                elif restriction == 'missing_lead_role':
+                    candidate['credits']['cast'][0]['character'] = ''
+                elif restriction == 'supporting':
+                    candidate['credits']['cast'][0]['order'] = 1
+                elif restriction == 'short':
+                    candidate['runtime'] = 5
+                elif restriction == 'non_comedy':
+                    candidate['genres'] = []
+                self.assertFalse(app.classify(candidate, person)[0])
+
     def test_refresh_failure_does_not_modify_previous_snapshot(self):
         previous = {'items': [{'tmdbId': 689643, 'personId': 52849, 'year': '2020', 'title': 'Sincerely', 'comedian': 'Louis C.K.'}]}
         original = copy.deepcopy(previous)

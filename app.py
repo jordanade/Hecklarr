@@ -315,8 +315,8 @@ def classify(movie, comedian):
         return False, 'Explicitly excluded'
     if movie_id in comedian.get('includeIds', []):
         return True, 'Confirmed special'
-    cast = [entry for entry in movie.get('credits', {}).get('cast', [])
-            if entry['id'] == comedian['id']]
+    all_cast = movie.get('credits', {}).get('cast', [])
+    cast = [entry for entry in all_cast if entry['id'] == comedian['id']]
     if not cast:
         return False, 'No performer credit'
     performer = cast[0]
@@ -340,6 +340,16 @@ def classify(movie, comedian):
     description = movie.get('overview', '').lower()
     if named and re.search(r'stand[ -]?up|comedy special|recorded live|filmed live', description):
         return True, 'Named performer and live-special description'
+    title_prefix, separator, subtitle = movie.get('title', '').partition(':')
+    titled_performer = separator and subtitle.strip() and normalize(title_prefix) == normalize(comedian['name'])
+    wrote_performance = any(entry.get('id') == comedian['id'] and entry.get('job') == 'Writer'
+                            for entry in movie.get('credits', {}).get('crew', []))
+    self_cast = all(re.search(r'\b(self|himself|herself|themselves)\b', (entry.get('character') or '').lower())
+                    and not re.search(r'archive|uncredited', (entry.get('character') or '').lower())
+                    for entry in all_cast)
+    documentary = any(genre['id'] == 99 for genre in movie.get('genres', []))
+    if titled_performer and wrote_performance and self_cast and not documentary:
+        return True, 'Named self-performance and writing credit'
     return False, 'No clear stand-up classification; review metadata or add an inclusion'
 
 
