@@ -7,7 +7,7 @@ const searchExamples = [
   'Mike Birbiglia', 'Ali Wong', 'Josh Johnson', 'Bo Burnham', 'Ricky Gervais',
   'Richard Pryor', 'Chris Rock', 'Bill Hicks', 'Mitch Hedberg', 'Wanda Sykes',
   'Steven Wright', 'Norm Macdonald', 'Stewart Lee', 'Demetri Martin', 'Joe Pera',
-  'Jacqueline Novak', 'Julio Torres', 'Anthony Jeselnik'
+  'Jacqueline Novak', 'Julio Torres', 'Anthony Jeselnik', 'Neal Brennan'
 ];
 let specialToExclude;
 let personToRemove;
