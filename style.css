@@ -101,7 +101,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
 .tight { margin-top: -9px; }
 details { margin-top: 18px; }
 .card > details { margin-top: 0; }
-summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; cursor: pointer; font-size: 13.2px; font-weight: 500; list-style: none; margin-bottom: 16px; }
+summary { display: flex; justify-content: flex-start; align-items: center; gap: 8px; cursor: pointer; font-size: 13.2px; font-weight: 500; list-style: none; margin-bottom: 16px; }
 summary::-webkit-details-marker { display: none; }
 summary::after { content: "›"; font-size: 20px; line-height: 1; color: var(--muted); }
 details[open] > summary::after { transform: rotate(90deg); }
