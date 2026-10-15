@@ -20,9 +20,9 @@ This application uses TMDB and the TMDB APIs but is not endorsed, certified, or 
 
 ## Hecklarr icon
 
-`icon.png` was generated and revised with OpenAI's image-generation tool for this project. The prompts and revisions are recorded in [icon-prompts.md](icon-prompts.md). The revisions used the earlier generated icon as their reference; no performer likeness or third-party photograph was supplied in that recorded workflow.
+`icon.png` was generated and revised with OpenAI's image-generation tool for this project. The prompts and revisions are recorded in [icon-prompts.md](icon-prompts.md). The current ink-drawing revision used user-supplied visual references and a [Gator microphone-clip product photograph](https://goknight.com/gator-gfw-mic-clip-standard-microphone-clip/) to guide hardware anatomy. Those reference images are not bundled with the application; no performer likeness or product branding appears in the icon.
 
-- SHA-256: `fa3cb8f3044d6e5bc2d0fec439099618775c4cefaee6670f7d723d7d49ff59d0`
+- SHA-256: `f74d32daaba0e2b5abcbf2b45467418cf2d938303e6fd445bc78db91149b0d5e`
 - Format: 1254 × 1254 RGB PNG.
 - The image retains its embedded generation-provenance metadata.
 
