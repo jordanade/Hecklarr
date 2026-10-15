@@ -28,7 +28,7 @@ header { height: 64px; border-bottom: 1px solid var(--line); }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand strong { font-size: 20px; font-weight: 600; letter-spacing: -.4px; }
 .brand small { display: block; font-size: 13.2px; color: var(--muted); }
-.mark { width: 32px; height: 32px; border-radius: 5px; }
+.mark { width: 38px; height: 38px; border-radius: 5px; }
 main { max-width: 1400px; margin: auto; padding: 26px 24px 24px; }
 .intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; padding-bottom: 20px; margin-bottom: 28px; border-bottom: 1px solid var(--line); }
 .intro-summary { min-width: 0; }
