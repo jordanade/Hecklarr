@@ -4,21 +4,41 @@ Checked October 15, 2026, against live TMDB data and the artist, distributor, an
 
 **Hecklarr does not find every special.** At the audit baseline, the missing-keyword fix for Sheng Wang recovered 16 other movie entries across the example pool. Eight further full-length performances were still rejected. The follow-up below resolves those eight; gaps remain for television episodes and incomplete movie records.
 
-## Follow-up matching fix
+## General matching correction
 
-Replaying all 844 audited performer/movie pairs after the follow-up produces **132 matches**, up from 124. Exactly the eight confirmed full-length misses below are added; no previously accepted titles drop out and no other titles are added in this sample.
+Replaying all 844 audited performer/movie pairs after the correction produces **132 matches**, up from 124. Exactly the eight confirmed full-length misses below are added; no previously accepted titles drop out and no other titles are added in this sample.
 
-- Blank roles can qualify when a movie has explicit stand-up/comedy-special description, exact `Comedian: Subtitle` billing, a lead credit, a comedy genre, at least 20 minutes of runtime, and no Documentary genre. This resolves *It's About Time* and *# (Hashtag)*.
-- The written self-performance fallback also recognizes `Screenplay` credits and `A Comedian Special` title forms. This resolves *Boyish Girl Interrupted* and *A Steven Wright Special*.
-- A stand-up comedy title can qualify with a lead self credit, the performer's writing credit, all-self cast, comedy genre, sufficient runtime, and no Documentary genre. This resolves *Freshman Fifteen*.
-- [Three source-verified movie/headliner pairs](../verified-specials.json) cover *Old Baby*, *My Favorite Shapes*, and *Mouthful of Shame*. They retain the performer, lead, runtime, and comedy checks while accommodating contradictory metadata. They do not apply to other titles or guest performers. Explicit user exclusions still win.
-- Regression fixtures contain all eight source-backed cases with minimal metadata and synthetic descriptions. Negative cases cover documentaries, fictional roles, guest/archive credits, missing evidence, and user exclusions.
+The production allowlist has been removed. The classifier has no approved artist names, movie titles, or movie/person ID pairs. It uses evidence from the current TMDB response:
 
-Validation: all 78 automated tests pass. The Docker image builds, and all eight reference cases pass inside the image with networking disabled and no real configuration mounted. The local service was restarted and passed its health check with its existing settings unchanged.
+- The selected person must be the lead performer, have a self or unspecified role, have at least 20 minutes of runtime, and belong to the Comedy genre. Acting, archive, and uncredited lead roles remain excluded. User exclusions take precedence.
+- Stand-up keywords and explicit performance descriptions remain evidence. Missing cast roles can be inferred from clear performer billing together with a writing credit or explicit special description.
+- Performer billing includes `Performer: Subtitle`, `Title by Performer`, and named-special forms. Both `Writer` and `Screenplay` are writing credits. Supporting cameos, voice performances, and incomplete guest roles do not decide whether the headliner is performing stand-up.
+- A Documentary genre tag alone does not veto a performance. A synopsis describing a documentary, biography, portrait, interviews, or backstage material is left for review unless it explicitly identifies a comedy/stand-up special. This preserves documentary interludes within actual specials.
+- A lead self performer with a writing credit can also qualify when the description combines stage/performance actions with comedy material such as jokes or routines. This handles performances whose titles are not simply the artist's name.
+- Current and earlier stage names come from TMDB's person-profile aliases, using the existing profile request. No extra API credential or per-artist configuration is required.
+
+The general rules recover *Old Baby*, *My Favorite Shapes*, and *Mouthful of Shame* as performer-billed, self-authored comedy performances. No exceptions are needed for their genre tags, guests, or title wording.
+
+### Validation outside the original examples
+
+A second read-only check used John Mulaney, Dave Chappelle, Jim Gaffigan, Sarah Silverman, Patton Oswalt, Suzy Eddie Izzard, Kevin Hart, and Jerry Seinfeld. Their filmographies contained 773 cast credits; 111 had lead comedy credits eligible for deeper examination. This is a matching check, not a complete independent filmography audit.
+
+Compared with the previous matcher, these 111 candidates increase from **61 to 75 matches**, with no dropped matches. The 14 additions are:
+
+- [Patton Oswalt: No Reason to Complain](https://ir.paramount.com/static-files/4e1aeede-35fe-4325-96f2-fd22faa683e8).
+- [Kevin Hart: Let Me Explain](https://www.themoviedb.org/movie/181330).
+- [Jerry Before Seinfeld](https://www.netflix.com/title/80163156?fromWatch=true).
+- Eleven releases billed as Eddie Izzard, recovered through the person profile's earlier stage-name alias: *Circle*, *Definite Article*, *Glorious*, *Unrepeatable*, *Sexie*, *Live from Wembley*, *Live at the Ambassadors*, *Live at Madison Square Garden*, *Dress to Circle*, *Force Majeure Live*, and *Wunderbar*. References: [artist's stand-up catalog](https://www.eddieizzard.com/en/standup), [distributor's box-set announcement](https://shorefire.com/releases/entry/new-box-set-eddie-izzard-the-definitive-comedy-collection-comedy-dynamics), and [the French rough-cut performance](https://tv.apple.com/ca/movie/eddie-izzard-dress-to-circle/umc.cmc.4tdtmmxkq1bogu75k1uyz5xpd). These include alternate performances/edits, not necessarily eleven separate original hours.
+
+Counterexamples including *Tig*, *Paralyzed by Hope*, *I Am Road Comic*, *Believe: The Eddie Izzard Story*, *Comedian*, *Lust for Glorious*, *Sorry/Not Sorry*, and the *What Now? All Access* backstage documentary remain excluded. Compilations and short/unknown-runtime videos still require review.
+
+Test fixtures cover the original eight omissions, four further performances, and seven documentary/non-performance counterexamples. Tests also replace the reference movie IDs, performer IDs, and artist names to verify that matching works for previously unseen entries. These named records are used only by tests.
+
+All 83 automated tests pass. The rebuilt container has no allowlist file or lookup; with networking disabled, its 12 positive reference performances match and its seven documentary/non-performance references are excluded. The local app was restarted successfully with its existing settings unchanged.
 
 Correction to the original analysis: `stand[ -]?up` already recognized “standup,” “stand up,” and “stand-up.” Gulman's special was rejected by the earlier missing-role guard, not by spelling.
 
-These changes remain local. No release, deployment, watchlist change, or Radarr sync was performed for the fix.
+No release, deployment, watchlist change, or Radarr sync was performed for this correction. Matching ambiguous metadata remains an inference; these checks do not guarantee complete coverage of every artist or perfect classification of every future record.
 
 ## Method and limits
 
@@ -76,7 +96,7 @@ These eight titles **already reach the classifier through movie cast credits**. 
 | Julio Torres — *My Favorite Shapes by Julio Torres* | [612392](https://www.themoviedb.org/movie/612392) | No stand-up keyword or recognized overview phrase. The title uses “by Julio Torres”; voice cameos are fictional objects rather than self roles. [HBO explicitly confirms the special and voice cameos](https://press.wbd.com/us/media-release/hbo-0/julio-torres-debuts-first-comedy-special-hbo-my-favorite-shapes-julio-torres). |
 | Jim Norton — *Mouthful of Shame* | [446048](https://www.themoviedb.org/movie/446048) | No stand-up keyword or recognized overview phrase. Documentary genre and uncredited guest cameos disqualify the new fallback. The selected lead performer himself is credited normally. |
 
-These were left unchanged during the research audit, then resolved by the follow-up above. The original rejection reasons are preserved here as the evidence behind the changes.
+These were left unchanged during the research audit, then resolved by the general correction above. The original rejection reasons are preserved here as the evidence behind the changes.
 
 ## Short specials, series, and packaging
 

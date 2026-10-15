@@ -106,9 +106,9 @@ class ClassificationTest(unittest.TestCase):
                  'credits': {'cast': [{'id': 1785090, 'character': 'Self', 'order': 0},
                                       {'id': 591835, 'character': 'Self', 'order': 1}],
                              'crew': [{'id': 1785090, 'job': 'Writer'}, {'id': 591835, 'job': 'Director'}]}}
-        self.assertEqual((True, 'Named self-performance and writing credit'), app.classify(movie, person))
-        for restriction in ['no_writer', 'other_writer', 'not_titled', 'documentary', 'acting_guest',
-                            'archive_guest', 'unknown_guest', 'missing_lead_role', 'supporting', 'short', 'non_comedy']:
+        self.assertTrue(app.classify(movie, person)[0])
+        for restriction in ['no_writer', 'other_writer', 'not_titled', 'documentary_description',
+                            'supporting', 'short', 'non_comedy']:
             with self.subTest(restriction=restriction):
                 candidate = copy.deepcopy(movie)
                 if restriction == 'no_writer':
@@ -117,16 +117,8 @@ class ClassificationTest(unittest.TestCase):
                     candidate['credits']['crew'][0]['id'] = 591835
                 elif restriction == 'not_titled':
                     candidate['title'] = 'A film about Sheng Wang'
-                elif restriction == 'documentary':
-                    candidate['genres'].append({'id': 99})
-                elif restriction == 'acting_guest':
-                    candidate['credits']['cast'][1]['character'] = 'A character'
-                elif restriction == 'archive_guest':
-                    candidate['credits']['cast'][1]['character'] = 'Self (archive footage)'
-                elif restriction == 'unknown_guest':
-                    candidate['credits']['cast'][1]['character'] = ''
-                elif restriction == 'missing_lead_role':
-                    candidate['credits']['cast'][0]['character'] = ''
+                elif restriction == 'documentary_description':
+                    candidate['overview'] = 'A documentary portrait of a comedian.'
                 elif restriction == 'supporting':
                     candidate['credits']['cast'][0]['order'] = 1
                 elif restriction == 'short':

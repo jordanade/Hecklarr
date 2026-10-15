@@ -39,7 +39,7 @@ Add comedians from **Comedians**. Hecklarr refreshes the catalog and asks Radarr
 
 Removing a comedian removes their titles from the feed. **Exclude this** opens a confirmation with Radarr deletion selected; confirming permanently deletes files managed by Radarr. Uncheck it to exclude a title from the feed only. Disable the import list in Radarr to pause additions.
 
-Discovery covers specials listed as TMDB movies. Performances catalogued only as TV episodes cannot be added to Radarr. A small [source-verified catalog](verified-specials.json) supplements matching for known specials with ambiguous metadata; your exclusions still take precedence.
+Discovery covers specials listed as TMDB movies. Performances catalogued only as TV episodes cannot be added to Radarr. Matching uses performer and writing credits, title billing, descriptions, and stage-name aliases. Ambiguous entries remain available for review; your exclusions take precedence.
 
 TMDB metadata can be incomplete, and an item in Hecklarr does not guarantee a release is available from your indexers.
 

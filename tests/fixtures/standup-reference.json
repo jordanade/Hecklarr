@@ -1,6 +1,6 @@
 {
   "verifiedOn": "2026-10-15",
-  "note": "Minimal metadata shapes from the coverage audit. Overviews are short synthetic paraphrases preserving the matching evidence, not TMDB synopsis copies.",
+  "note": "Minimal metadata shapes from the coverage audit and eight-comedian follow-up. Overviews are synthetic paraphrases preserving matching evidence, not TMDB synopsis copies. These fixtures are used only by tests.",
   "specials": [
     {
       "person": {
@@ -406,6 +406,618 @@
         }
       },
       "sourceUrl": "https://media.netflix.com/en/only-on-netflix/80134967"
+    },
+    {
+      "person": {
+        "id": 10872,
+        "name": "Patton Oswalt"
+      },
+      "movie": {
+        "id": 44220,
+        "title": "Patton Oswalt: No Reason to Complain",
+        "runtime": 42,
+        "overview": "Patton Oswalt discusses everyday life.",
+        "genres": [
+          {
+            "id": 35
+          },
+          {
+            "id": 99
+          },
+          {
+            "id": 10770
+          }
+        ],
+        "keywords": {
+          "keywords": []
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 10872,
+              "character": "Self",
+              "order": 0
+            }
+          ],
+          "crew": [
+            {
+              "id": 10872,
+              "job": "Writer"
+            }
+          ]
+        }
+      },
+      "sourceUrl": "https://www.themoviedb.org/movie/44220"
+    },
+    {
+      "person": {
+        "id": 55638,
+        "name": "Kevin Hart"
+      },
+      "movie": {
+        "id": 181330,
+        "title": "Kevin Hart: Let Me Explain",
+        "runtime": 74,
+        "overview": "Kevin Hart talks about his personal life.",
+        "genres": [
+          {
+            "id": 35
+          },
+          {
+            "id": 99
+          }
+        ],
+        "keywords": {
+          "keywords": [
+            {
+              "id": 1485
+            },
+            {
+              "id": 2251
+            },
+            {
+              "id": 15160
+            },
+            {
+              "id": 168346
+            },
+            {
+              "id": 173918
+            },
+            {
+              "id": 179431
+            },
+            {
+              "id": 362573
+            }
+          ]
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 55638,
+              "character": "Himself",
+              "order": 0
+            },
+            {
+              "id": 1174141,
+              "character": "Dapper Guy",
+              "order": 1
+            },
+            {
+              "id": 1174142,
+              "character": "Disc Jockey",
+              "order": 2
+            },
+            {
+              "id": 1174143,
+              "character": "Angry Light-Skinned Girl",
+              "order": 3
+            },
+            {
+              "id": 1320506,
+              "character": "Plastic Cup Boyz",
+              "order": 4
+            }
+          ],
+          "crew": [
+            {
+              "id": 55638,
+              "job": "Writer"
+            }
+          ]
+        }
+      },
+      "sourceUrl": "https://www.themoviedb.org/movie/181330"
+    },
+    {
+      "person": {
+        "id": 16377,
+        "name": "Jerry Seinfeld"
+      },
+      "movie": {
+        "id": 473812,
+        "title": "Jerry Before Seinfeld",
+        "runtime": 62,
+        "overview": "Jerry Seinfeld returns to the club, delivering jokes and stories.",
+        "genres": [
+          {
+            "id": 35
+          },
+          {
+            "id": 99
+          }
+        ],
+        "keywords": {
+          "keywords": []
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 16377,
+              "character": "Self",
+              "order": 0
+            },
+            {
+              "id": 14991,
+              "character": "Self",
+              "order": 1
+            },
+            {
+              "id": 1217267,
+              "character": "Self",
+              "order": 2
+            },
+            {
+              "id": 182801,
+              "character": "Self",
+              "order": 3
+            },
+            {
+              "id": 141028,
+              "character": "Self (archive footage)",
+              "order": 4
+            }
+          ],
+          "crew": [
+            {
+              "id": 16377,
+              "job": "Writer"
+            }
+          ]
+        }
+      },
+      "sourceUrl": "https://www.themoviedb.org/movie/473812"
+    },
+    {
+      "person": {
+        "id": 1926,
+        "name": "Suzy Eddie Izzard",
+        "also_known_as": [
+          "Eddie Izzard"
+        ]
+      },
+      "movie": {
+        "id": 13587,
+        "title": "Eddie Izzard: Circle",
+        "runtime": 82,
+        "overview": "An evening with Eddie Izzard in New York.",
+        "genres": [
+          {
+            "id": 35
+          }
+        ],
+        "keywords": {
+          "keywords": []
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 1926,
+              "character": "Herself",
+              "order": 0
+            }
+          ],
+          "crew": [
+            {
+              "id": 1926,
+              "job": "Writer"
+            }
+          ]
+        }
+      },
+      "sourceUrl": "https://www.themoviedb.org/movie/13587"
+    }
+  ],
+  "nonSpecials": [
+    {
+      "person": {
+        "id": 220088,
+        "name": "Tig Notaro"
+      },
+      "movie": {
+        "id": 318225,
+        "title": "Tig",
+        "runtime": 95,
+        "overview": "A documentary that follows a comedian through illness.",
+        "genres": [
+          {
+            "id": 99
+          }
+        ],
+        "keywords": {
+          "keywords": [
+            {
+              "id": 3485
+            },
+            {
+              "id": 8496
+            },
+            {
+              "id": 10163
+            },
+            {
+              "id": 157213
+            },
+            {
+              "id": 158718
+            },
+            {
+              "id": 187056
+            },
+            {
+              "id": 276162
+            }
+          ]
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 220088,
+              "character": "Self",
+              "order": 0
+            },
+            {
+              "id": 1003843,
+              "character": "Self - Tig's Wife",
+              "order": 1
+            },
+            {
+              "id": 58225,
+              "character": "Self",
+              "order": 2
+            },
+            {
+              "id": 7404,
+              "character": "Self",
+              "order": 3
+            },
+            {
+              "id": 109708,
+              "character": "Self",
+              "order": 4
+            }
+          ],
+          "crew": []
+        }
+      },
+      "sourceUrl": "https://www.themoviedb.org/movie/318225"
+    },
+    {
+      "person": {
+        "id": 60278,
+        "name": "Maria Bamford"
+      },
+      "movie": {
+        "id": 279960,
+        "title": "I Am Road Comic",
+        "runtime": 69,
+        "overview": "Interviews with comedians about life on the road.",
+        "genres": [
+          {
+            "id": 35
+          },
+          {
+            "id": 99
+          }
+        ],
+        "keywords": {
+          "keywords": []
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 60278,
+              "character": "Self",
+              "order": 0
+            },
+            {
+              "id": 1541848,
+              "character": "Self",
+              "order": 1
+            },
+            {
+              "id": 170759,
+              "character": "Self",
+              "order": 2
+            },
+            {
+              "id": 1231717,
+              "character": "Self",
+              "order": 3
+            },
+            {
+              "id": 51990,
+              "character": "Self",
+              "order": 4
+            }
+          ],
+          "crew": []
+        }
+      },
+      "sourceUrl": "https://www.themoviedb.org/movie/279960"
+    },
+    {
+      "person": {
+        "id": 1926,
+        "name": "Suzy Eddie Izzard",
+        "also_known_as": [
+          "Eddie Izzard"
+        ]
+      },
+      "movie": {
+        "id": 40150,
+        "title": "Believe: The Eddie Izzard Story",
+        "runtime": 102,
+        "overview": "A biographical documentary following a comedian on tour.",
+        "genres": [
+          {
+            "id": 35
+          },
+          {
+            "id": 99
+          }
+        ],
+        "keywords": {
+          "keywords": [
+            {
+              "id": 187056
+            }
+          ]
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 1926,
+              "character": "Herself",
+              "order": 0
+            },
+            {
+              "id": 102990,
+              "character": "Self",
+              "order": 1
+            },
+            {
+              "id": 1461,
+              "character": "Self",
+              "order": 2
+            },
+            {
+              "id": 4581,
+              "character": "Self",
+              "order": 3
+            },
+            {
+              "id": 2157,
+              "character": "Self",
+              "order": 4
+            }
+          ],
+          "crew": []
+        }
+      },
+      "sourceUrl": "https://www.themoviedb.org/movie/40150"
+    },
+    {
+      "person": {
+        "id": 16377,
+        "name": "Jerry Seinfeld"
+      },
+      "movie": {
+        "id": 19973,
+        "title": "Comedian",
+        "runtime": 82,
+        "overview": "A look at two comedians building their acts and careers.",
+        "genres": [
+          {
+            "id": 35
+          },
+          {
+            "id": 99
+          }
+        ],
+        "keywords": {
+          "keywords": [
+            {
+              "id": 3485
+            }
+          ]
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 16377,
+              "character": "Self",
+              "order": 0
+            },
+            {
+              "id": 85363,
+              "character": "Self",
+              "order": 1
+            },
+            {
+              "id": 105787,
+              "character": "Self",
+              "order": 2
+            },
+            {
+              "id": 135855,
+              "character": "Self",
+              "order": 3
+            },
+            {
+              "id": 566120,
+              "character": "Self",
+              "order": 4
+            }
+          ],
+          "crew": []
+        }
+      },
+      "sourceUrl": "https://www.themoviedb.org/movie/19973"
+    },
+    {
+      "person": {
+        "id": 55638,
+        "name": "Kevin Hart"
+      },
+      "movie": {
+        "id": 839432,
+        "title": "Kevin Hart: \"What Now?\" All Access",
+        "runtime": 65,
+        "overview": "A behind-the-scenes documentary about a comedy tour.",
+        "genres": [
+          {
+            "id": 35
+          },
+          {
+            "id": 99
+          }
+        ],
+        "keywords": {
+          "keywords": []
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 55638,
+              "character": "",
+              "order": 0
+            }
+          ],
+          "crew": []
+        }
+      },
+      "sourceUrl": "https://www.themoviedb.org/movie/839432"
+    },
+    {
+      "person": {
+        "id": 1926,
+        "name": "Suzy Eddie Izzard",
+        "also_known_as": [
+          "Eddie Izzard"
+        ]
+      },
+      "movie": {
+        "id": 781288,
+        "title": "Lust For Glorious",
+        "runtime": 27,
+        "overview": "A rockumentary spoof starring Eddie Izzard.",
+        "genres": [
+          {
+            "id": 35
+          }
+        ],
+        "keywords": {
+          "keywords": [
+            {
+              "id": 33899
+            }
+          ]
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 1926,
+              "character": "Herself",
+              "order": 0
+            },
+            {
+              "id": 1903979,
+              "character": "Promo Director",
+              "order": 1
+            },
+            {
+              "id": 33403,
+              "character": "Al",
+              "order": 2
+            },
+            {
+              "id": 139811,
+              "character": "T.J.",
+              "order": 3
+            },
+            {
+              "id": 1268582,
+              "character": "Mel",
+              "order": 4
+            }
+          ],
+          "crew": []
+        }
+      },
+      "sourceUrl": "https://www.themoviedb.org/movie/781288"
+    },
+    {
+      "person": {
+        "id": 52849,
+        "name": "Louis C.K."
+      },
+      "movie": {
+        "id": 1156641,
+        "title": "Sorry/Not Sorry",
+        "runtime": 90,
+        "overview": "A documentary about a comedian and the impact of misconduct.",
+        "genres": [
+          {
+            "id": 99
+          }
+        ],
+        "keywords": {
+          "keywords": []
+        },
+        "credits": {
+          "cast": [
+            {
+              "id": 52849,
+              "character": "Self (archive footage) (uncredited)",
+              "order": 6
+            },
+            {
+              "id": 457674,
+              "character": "Self",
+              "order": 0
+            },
+            {
+              "id": 22224,
+              "character": "Self",
+              "order": 1
+            },
+            {
+              "id": 1226308,
+              "character": "Self",
+              "order": 2
+            },
+            {
+              "id": 1524033,
+              "character": "Self",
+              "order": 3
+            }
+          ],
+          "crew": []
+        }
+      },
+      "sourceUrl": "https://www.themoviedb.org/movie/1156641"
     }
   ]
 }
