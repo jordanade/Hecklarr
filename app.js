@@ -1,5 +1,12 @@
 const $ = (selector) => document.querySelector(selector);
 let settings;
+let search_example;
+const searchExamples = [
+  'Bill Burr', 'Louis C.K.', 'Sheng Wang', 'Maria Bamford', 'James Acaster',
+  'Taylor Tomlinson', 'Nate Bargatze', 'Gary Gulman', 'Tig Notaro',
+  'Mike Birbiglia', 'Ali Wong', 'Josh Johnson', 'Bo Burnham', 'Ronny Chieng',
+  'Hannah Gadsby', 'Kyle Kinane'
+];
 let specialToExclude;
 let personToRemove;
 let catalogItems = [];
@@ -71,7 +78,25 @@ async function loadDownloadStatuses() {
   }
   renderDownloadBadges();
 }
+function normalizeComedianName(name) {
+  return name.normalize('NFKD').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+function updateSearchExample() {
+  const tracked_names = new Set(settings.comedians.map(person => normalizeComedianName(person.name)));
+  const available_examples = searchExamples.filter(name => !tracked_names.has(normalizeComedianName(name)));
+  if (search_example && available_examples.includes(search_example)) return;
+  let previous_example;
+  try { previous_example = sessionStorage.getItem('hecklarr-search-example'); } catch {}
+  const different_examples = available_examples.filter(name => name !== previous_example);
+  const candidates = different_examples.length ? different_examples : available_examples;
+  search_example = candidates[Math.floor(Math.random() * candidates.length)];
+  $('#search').placeholder = search_example ? `Search by name, e.g. ${search_example}` : 'Search by comedian name';
+  try {
+    if (search_example) sessionStorage.setItem('hecklarr-search-example', search_example);
+  } catch {}
+}
 function renderPeople() {
+  updateSearchExample();
   $('#people-count').textContent = settings.comedians.length;
   $('#comedians').replaceChildren();
   const select = $('#override-form').elements.personId;
