@@ -1,6 +1,6 @@
 # Hecklarr icon
 
-The current icon is the geometric drawing in `icon.svg`, exported to `icon.png`. The image-generation prompts below document earlier raster versions.
+The current `icon.png` is the raster image explicitly selected by the user on October 15, 2026, copied unchanged from their supplied PNG. It replaces the vector experiment described below.
 
 Generated with the built-in image generation tool. The final project asset is `icon.png` in this directory. The initial image was refined once to remove blotches from its background.
 
@@ -45,9 +45,9 @@ That raster PNG was copied unchanged from the tool output, retaining its embedde
 Make a restrained correction to this nearly finished Hecklarr icon: the hardware looks slightly too bendy. Keep the composition, scale, mic direction toward the viewer, steep mic angle, angled stand, coarse grille and colors exactly as they are. Straighten the RIGID PARTS. The microphone handle has crisp straight longitudinal edges with only a slight linear taper, no bowed or bulging sides. Its rear connector is a short straight cylinder on the identical centerline, with straight sides. Make the compact clip a short firm sleeve/cradle, removing the exaggerated wavy hooked lip; do not extend it along the microphone. The stand shaft below the round pivot must be a perfectly straight rigid rod with parallel sides, preserving its existing diagonal angle, with no soft curved neck. Keep the grille rounded as appropriate. ONLY the flexible cable bends and hangs loosely. Preserve the bold slightly imperfect hand-inked edge character, but rigid objects should have straight geometry, not wavy rubbery forms. Do not add detail, change the pose, shrink the subject, or introduce text, shine, shadows, or extra objects.
 
 
-## Geometric vector replacement — October 15, 2026
+## Superseded geometric vector experiment — October 15, 2026
 
-Repeated image-generation edits did not enforce the mic/plug alignment. The current icon is drawn directly in `icon.svg` instead. Mic-body and plug cross-sections are centered at local x=0 within one group, `translate(188 63) rotate(35)`. The centerline remains a single straight line after projection. The rounded grille shares that axis; the clip, angled stand, and flexible cable are separate shapes.
+Repeated image-generation edits did not enforce the mic/plug alignment. That experiment was drawn directly in `icon.svg` instead. Mic-body and plug cross-sections are centered at local x=0 within one group, `translate(188 63) rotate(35)`. The centerline remains a single straight line after projection. The rounded grille shares that axis; the clip, angled stand, and flexible cable are separate shapes.
 
 The PNG is rendered from this SVG using Sharp's SVG renderer. No Sharp package is required by the running application. To regenerate with Sharp available in Node's module path:
 
@@ -58,3 +58,8 @@ await sharp(fs.readFileSync('icon.svg')).removeAlpha().png().toFile('icon.png');
 ```
 
 This step uses code-defined vector geometry rather than another image-generation prompt. The app and browser icon continue using the PNG export.
+
+
+## User-selected raster — October 15, 2026
+
+The user selected the coarse-grille raster variant with the upright stand and requested that exact supplied image be used. `icon.png` is a byte-for-byte copy of their attachment. No new image-generation prompt, vector recreation, cropping, or color adjustment was applied to the selected image. The unused SVG experiment was removed. Header, browser icon, and README use this selected PNG.

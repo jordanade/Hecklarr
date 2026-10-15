@@ -20,14 +20,12 @@ This application uses TMDB and the TMDB APIs but is not endorsed, certified, or 
 
 ## Hecklarr icon
 
-The current `icon.svg` is a project-authored vector drawing assembled with AI coding assistance. Its microphone and cable plug share one local centerline and one projection transform. `icon.png` is the opaque raster export used by the app, README, and browser icon.
+`icon.png` is the user-selected generated raster image, copied byte-for-byte from the supplied PNG. It is used by the app, README, and browser icon. The earlier vector experiment is no longer the active icon.
 
-Earlier raster versions were generated with OpenAI's image-generation tool. Their prompts and visual-reference history are recorded in [icon-prompts.md](icon-prompts.md). The current vector retains the microphone concept and palette, but is drawn from SVG geometry; no photograph pixels or product branding are bundled with it.
+The icon was generated and revised with OpenAI's image-generation tool. Prompts and visual-reference history are recorded in [icon-prompts.md](icon-prompts.md). The workflow used user-supplied visual references and a [microphone-clip product photograph](https://goknight.com/gator-gfw-mic-clip-standard-microphone-clip/) for hardware anatomy. Reference photographs are not bundled with the app; no performer likeness or product branding appears in the icon.
 
-- PNG SHA-256: `566aa0f2cd2b89811939dc609dd0814f820ad09d9b83ef6d0ef893e6219079f1`
+- PNG SHA-256: `3729f07e6c997cf2a7b0e5e20ccb788d75061bd6ffd95dd29370099cb87dcdb0`
 - PNG format: 1254 × 1254 RGB.
-- SVG source: `icon.svg`.
-- The vector export replaces the earlier generated PNG and does not retain that earlier image's generation-provenance metadata.
 
 AI assistance does not establish exclusivity or trademark clearance. The icon has not undergone a visual-similarity or trademark search.
 
