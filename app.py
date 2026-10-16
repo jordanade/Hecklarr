@@ -621,6 +621,15 @@ def publicSettings():
                 'hasRadarrKey': bool(SETTINGS.get('radarrApiKey'))}
 
 
+STATIC_FILES = {
+    '/': ('index.html', 'text/html'),
+    '/app.js': ('app.js', 'text/javascript'),
+    '/style.css': ('style.css', 'text/css'),
+    '/icon.png': ('icon.png', 'image/png'),
+    '/tmdb-logo.svg': ('tmdb-logo.svg', 'image/svg+xml'),
+}
+
+
 class Handler(BaseHTTPRequestHandler):
     timeout = 10
 
@@ -660,35 +669,69 @@ class Handler(BaseHTTPRequestHandler):
         with LOCK:
             return bool(token and SESSIONS.get(hashlib.sha256(token.value.encode()).hexdigest(), 0) > time.time())
 
+    def staticFile(self, path):
+        filename, content_type = STATIC_FILES[path]
+        asset = Path(__file__).with_name(filename)
+        body = asset.read_bytes() if content_type.startswith('image/') else asset.read_text()
+        return self.reply(200, body, content_type)
+
+    def health(self):
+        return self.reply(200 if SNAPSHOT else 503, {
+            'ready': bool(SNAPSHOT),
+            'count': len(SNAPSHOT.get('items', [])),
+            'updatedAt': SNAPSHOT.get('updatedAt'),
+            'lastError': LAST_ERROR,
+        })
+
+    def authStatus(self):
+        return self.reply(200, {
+            'authenticated': self.authenticated(),
+            'username': SETTINGS['authUser'],
+            'setupRequired': not bool(SETTINGS.get('authHash')),
+        })
+
+    def movieFeed(self, query):
+        if not hmac.compare_digest(query.get('key', [''])[0].encode(), SETTINGS['feedKey'].encode()):
+            return self.reply(401, {'error': 'Invalid feed key'})
+        if not SNAPSHOT:
+            return self.reply(503, {'error': 'No successful refresh yet'})
+        # Radarr Custom Lists parse MovieResultResource.Id, not a tmdbId field.
+        return self.reply(200, [{'id': row['tmdbId'], 'title': row['title']}
+                                for row in SNAPSHOT['items']])
+
+    def searchPeople(self, query, settings):
+        term = query.get('q', [''])[0].strip()
+        if len(term) < 2:
+            raise ValueError('Enter at least two characters')
+        data = tmdb('search/person?' + urllib.parse.urlencode({'query': term}), settings)
+        return self.reply(200, [{
+            'id': row['id'],
+            'name': row['name'],
+            'knownFor': ', '.join(movie.get('title', movie.get('name', ''))
+                                  for movie in row.get('known_for', [])[:3]),
+        } for row in data['results']])
+
+    def radarrOptions(self, settings):
+        return self.reply(200, {
+            'roots': radarr('rootfolder', settings),
+            'profiles': [{'id': row['id'], 'name': row['name']}
+                         for row in radarr('qualityprofile', settings)],
+        })
+
     def do_GET(self):
         self.connection.settimeout(self.timeout)
         expireMetadata()
         url = urllib.parse.urlsplit(self.path)
         path = url.path
         query = urllib.parse.parse_qs(url.query)
-        if path in ['/', '/app.js', '/style.css']:
-            filename, kind = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'),
-                              '/style.css': ('style.css', 'text/css')}[path]
-            return self.reply(200, Path(__file__).with_name(filename).read_text(), kind)
-        if path == '/icon.png':
-            return self.reply(200, Path(__file__).with_name('icon.png').read_bytes(), 'image/png')
-        if path == '/tmdb-logo.svg':
-            return self.reply(200, Path(__file__).with_name('tmdb-logo.svg').read_bytes(), 'image/svg+xml')
+        if path in STATIC_FILES:
+            return self.staticFile(path)
         if path == '/api/health':
-            return self.reply(200 if SNAPSHOT else 503, {'ready': bool(SNAPSHOT),
-                              'count': len(SNAPSHOT.get('items', [])), 'updatedAt': SNAPSHOT.get('updatedAt'),
-                              'lastError': LAST_ERROR})
+            return self.health()
         if path == '/api/auth':
-            return self.reply(200, {'authenticated': self.authenticated(), 'username': SETTINGS['authUser'],
-                                    'setupRequired': not bool(SETTINGS.get('authHash'))})
+            return self.authStatus()
         if path == '/feed/movies.json':
-            if not hmac.compare_digest(query.get('key', [''])[0].encode(), SETTINGS['feedKey'].encode()):
-                return self.reply(401, {'error': 'Invalid feed key'})
-            if not SNAPSHOT:
-                return self.reply(503, {'error': 'No successful refresh yet'})
-            # Radarr Custom Lists parse MovieResultResource.Id, not a tmdbId field.
-            return self.reply(200, [{'id': row['tmdbId'], 'title': row['title']}
-                                    for row in SNAPSHOT['items']])
+            return self.movieFeed(query)
         if not self.authenticated():
             return self.reply(401, {'error': 'Log in to continue'})
         try:
@@ -702,160 +745,185 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/download-status':
                 return self.reply(200, cachedDownloadStatuses())
             if path == '/api/search':
-                term = query.get('q', [''])[0].strip()
-                if len(term) < 2:
-                    raise ValueError('Enter at least two characters')
-                data = tmdb('search/person?' + urllib.parse.urlencode({'query': term}), settings)
-                return self.reply(200, [{'id': row['id'], 'name': row['name'],
-                                        'knownFor': ', '.join(movie.get('title', movie.get('name', ''))
-                                                              for movie in row.get('known_for', [])[:3])}
-                                       for row in data['results']])
+                return self.searchPeople(query, settings)
             if path == '/api/radarr/options':
-                return self.reply(200, {'roots': radarr('rootfolder', settings),
-                                       'profiles': [{'id': row['id'], 'name': row['name']}
-                                                    for row in radarr('qualityprofile', settings)]})
+                return self.radarrOptions(settings)
             return self.reply(404, {'error': 'Not found'})
         except ValueError as error:
             if isinstance(error, TmdbAccessDenied):
                 clearMetadata()
             return self.reply(400, {'error': str(error)})
 
+    def readJsonBody(self):
+        length = int(self.headers.get('Content-Length', '0'))
+        if length < 0 or length > 65536:
+            raise ValueError('Invalid request size')
+        payload = self.rfile.read(length)
+        self.connection.settimeout(self.timeout)
+        body = json.loads(payload or b'{}')
+        if not isinstance(body, dict):
+            raise ValueError('Expected an object')
+        return body
+
+    def setupAccount(self, body):
+        with LOCK:
+            if SETTINGS.get('authHash'):
+                return self.reply(409, {'error': 'An account already exists. Log in to continue.'})
+            username = str(body.get('username', '')).strip()
+            password = str(body.get('password', ''))
+            if not username or len(username) > 80:
+                raise ValueError('Enter a username of 1 to 80 characters')
+            if len(password) < 8:
+                raise ValueError('Use a password with at least 8 characters')
+            if password != body.get('passwordConfirmation'):
+                raise ValueError('Passwords do not match')
+            salt = secrets.token_bytes(16)
+            with PASSWORD_SLOTS:
+                hashed = hashlib.scrypt(password.encode(), salt=salt, n=16384, r=8, p=1, dklen=64)
+            encoded = ('scrypt$16384$8$1$' + base64.b64encode(salt).decode() + '$'
+                       + base64.b64encode(hashed).decode())
+            saveSettings({'authUser': username, 'authHash': encoded})
+        return self.reply(201, {'ok': True})
+
+    def reserveLoginAttempt(self, ip):
+        with LOCK:
+            cutoff = time.time() - 600
+            for address in list(FAILURES):
+                recent = [stamp for stamp in FAILURES[address] if stamp > cutoff]
+                if recent:
+                    FAILURES[address] = recent
+                else:
+                    FAILURES.pop(address)
+            recent = FAILURES.get(ip, [])
+            if len(recent) >= 8 or (ip not in FAILURES and len(FAILURES) >= 1024):
+                return False
+            # Reserve before hashing so concurrent attempts cannot share the same budget.
+            FAILURES[ip] = recent + [time.time()]
+            return True
+
+    def login(self, body):
+        if not SETTINGS.get('authHash'):
+            return self.reply(409, {'error': 'Create your account first'})
+        ip = self.client_address[0]
+        if not self.reserveLoginAttempt(ip):
+            return self.reply(429, {'error': 'Too many attempts. Try again in ten minutes.'})
+        user_ok = hmac.compare_digest(str(body.get('username', '')).encode(), SETTINGS['authUser'].encode())
+        pass_ok = checkPassword(str(body.get('password', '')), SETTINGS['authHash'])
+        if not user_ok or not pass_ok:
+            return self.reply(401, {'error': 'Incorrect username or password'})
+        token = secrets.token_urlsafe(32)
+        with LOCK:
+            FAILURES.pop(ip, None)
+            expired = [key for key, expiry in SESSIONS.items() if expiry <= time.time()]
+            for key in expired:
+                SESSIONS.pop(key)
+            SESSIONS[hashlib.sha256(token.encode()).hexdigest()] = time.time() + 43200
+            saveJson(STATE_DIR / 'sessions.json', SESSIONS)
+        secure = '; Secure' if self.headers.get('X-Forwarded-Proto') == 'https' else ''
+        cookie = f'hecklarr_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200{secure}'
+        return self.reply(200, {'ok': True}, cookie=cookie)
+
+    def logout(self):
+        cookies = http.cookies.SimpleCookie(self.headers.get('Cookie', ''))
+        with LOCK:
+            for name in ['hecklarr_session', 'standuparr_session']:
+                token = cookies.get(name)
+                if token:
+                    SESSIONS.pop(hashlib.sha256(token.value.encode()).hexdigest(), None)
+            saveJson(STATE_DIR / 'sessions.json', SESSIONS)
+        expired = [name + '=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0'
+                   for name in ['hecklarr_session', 'standuparr_session']]
+        return self.reply(200, {'ok': True}, cookie=expired)
+
+    def updateSettings(self, body):
+        patch = {key: str(body[key]).strip()
+                 for key in ['radarrUrl', 'feedBaseUrl', 'rootFolderPath'] if key in body}
+        for key in ['radarrUrl', 'feedBaseUrl']:
+            if key in patch and urllib.parse.urlsplit(patch[key]).scheme not in ['http', 'https']:
+                raise ValueError('Use an http or https URL')
+        for key in ['tmdbApiKey', 'radarrApiKey']:
+            if body.get(key):
+                patch[key] = str(body[key]).strip()
+        if 'qualityProfileId' in body:
+            patch['qualityProfileId'] = int(body['qualityProfileId'])
+        saveSettings(patch)
+        return self.reply(200, publicSettings())
+
+    def addComedian(self, body):
+        person_id = int(body['id'])
+        person = tmdb(f'person/{person_id}', SETTINGS)
+        with REFRESH_LOCK:
+            people = SETTINGS['comedians'][:]
+            if not any(row['id'] == person_id for row in people):
+                people.append({'id': person_id, 'includeIds': [], 'excludeIds': []})
+            saveSettings({'comedians': people})
+        result = publicSettings()
+        for row in result['comedians']:
+            if row['id'] == person_id:
+                row['name'] = person['name']
+        return self.reply(200, result)
+
+    def removeComedianRequest(self, body):
+        person_id = int(body.get('id', 0))
+        delete_from_radarr = body.get('deleteFromRadarr', False)
+        if person_id <= 0 or not isinstance(delete_from_radarr, bool):
+            raise ValueError('Choose a comedian and deletion option')
+        result = removeComedian(person_id, delete_from_radarr)
+        return self.reply(200, {'settings': publicSettings(), **result})
+
+    def updateOverride(self, body):
+        with REFRESH_LOCK:
+            people = json.loads(json.dumps(SETTINGS['comedians']))
+            person = next(row for row in people if row['id'] == int(body['personId']))
+            movie_id = int(body['movieId'])
+            if movie_id <= 0 or body['action'] not in ['include', 'exclude']:
+                raise ValueError('Choose include or exclude and a valid TMDB movie ID')
+            for key in ['includeIds', 'excludeIds']:
+                person[key] = [entry for entry in person.get(key, []) if entry != movie_id]
+            person[body['action'] + 'Ids'].append(movie_id)
+            patch = {'comedians': people}
+            if body['action'] == 'include':
+                patch['excludedMovieIds'] = [entry for entry in SETTINGS.get('excludedMovieIds', [])
+                                             if entry != movie_id]
+            saveSettings(patch)
+        return self.reply(200, publicSettings())
+
+    def excludeSpecialRequest(self, body):
+        movie_id = int(body.get('movieId', 0))
+        delete_from_radarr = body.get('deleteFromRadarr', False)
+        if movie_id <= 0 or not isinstance(delete_from_radarr, bool):
+            raise ValueError('Choose a valid special and deletion option')
+        return self.reply(200, excludeSpecial(movie_id, delete_from_radarr))
+
+    def authenticatedPost(self, path, body):
+        routes = {
+            '/api/logout': lambda: self.logout(),
+            '/api/settings': lambda: self.updateSettings(body),
+            '/api/comedians': lambda: self.addComedian(body),
+            '/api/comedians/remove': lambda: self.removeComedianRequest(body),
+            '/api/overrides': lambda: self.updateOverride(body),
+            '/api/specials/exclude': lambda: self.excludeSpecialRequest(body),
+            '/api/refresh': lambda: self.reply(200, refresh(sync=True)),
+            '/api/sync': lambda: self.reply(200, syncRadarr()),
+        }
+        if path == '/api/sync' and not SNAPSHOT:
+            raise ValueError('Refresh the catalog first')
+        handler = routes.get(path)
+        return handler() if handler else self.reply(404, {'error': 'Not found'})
+
     def do_POST(self):
         expireMetadata()
         if self.headers.get('X-Hecklarr') != '1' and self.headers.get('X-Standuparr') != '1':
             return self.reply(403, {'error': 'Missing request header'})
         try:
-            length = int(self.headers.get('Content-Length', '0'))
-            if length < 0 or length > 65536:
-                raise ValueError('Invalid request size')
-            payload = self.rfile.read(length)
-            self.connection.settimeout(self.timeout)
-            body = json.loads(payload or b'{}')
-            if not isinstance(body, dict):
-                raise ValueError('Expected an object')
+            body = self.readJsonBody()
             if self.path == '/api/setup':
-                with LOCK:
-                    if SETTINGS.get('authHash'):
-                        return self.reply(409, {'error': 'An account already exists. Log in to continue.'})
-                    username = str(body.get('username', '')).strip()
-                    password = str(body.get('password', ''))
-                    if not username or len(username) > 80:
-                        raise ValueError('Enter a username of 1 to 80 characters')
-                    if len(password) < 8:
-                        raise ValueError('Use a password with at least 8 characters')
-                    if password != body.get('passwordConfirmation'):
-                        raise ValueError('Passwords do not match')
-                    salt = secrets.token_bytes(16)
-                    with PASSWORD_SLOTS:
-                        hashed = hashlib.scrypt(password.encode(), salt=salt, n=16384, r=8, p=1, dklen=64)
-                    encoded = 'scrypt$16384$8$1$' + base64.b64encode(salt).decode() + '$' + base64.b64encode(hashed).decode()
-                    saveSettings({'authUser': username, 'authHash': encoded})
-                return self.reply(201, {'ok': True})
+                return self.setupAccount(body)
             if self.path == '/api/login':
-                if not SETTINGS.get('authHash'):
-                    return self.reply(409, {'error': 'Create your account first'})
-                ip = self.client_address[0]
-                with LOCK:
-                    cutoff = time.time() - 600
-                    for address in list(FAILURES):
-                        recent = [stamp for stamp in FAILURES[address] if stamp > cutoff]
-                        if recent:
-                            FAILURES[address] = recent
-                        else:
-                            FAILURES.pop(address)
-                    recent = FAILURES.get(ip, [])
-                    if len(recent) >= 8 or (ip not in FAILURES and len(FAILURES) >= 1024):
-                        return self.reply(429, {'error': 'Too many attempts. Try again in ten minutes.'})
-                    # Reserve before hashing so concurrent attempts cannot share the same budget.
-                    FAILURES[ip] = recent + [time.time()]
-                user_ok = hmac.compare_digest(str(body.get('username', '')).encode(), SETTINGS['authUser'].encode())
-                pass_ok = checkPassword(str(body.get('password', '')), SETTINGS['authHash'])
-                if not user_ok or not pass_ok:
-                    return self.reply(401, {'error': 'Incorrect username or password'})
-                token = secrets.token_urlsafe(32)
-                with LOCK:
-                    FAILURES.pop(ip, None)
-                    expired = [key for key, expiry in SESSIONS.items() if expiry <= time.time()]
-                    for key in expired:
-                        SESSIONS.pop(key)
-                    SESSIONS[hashlib.sha256(token.encode()).hexdigest()] = time.time() + 43200
-                    saveJson(STATE_DIR / 'sessions.json', SESSIONS)
-                secure = '; Secure' if self.headers.get('X-Forwarded-Proto') == 'https' else ''
-                return self.reply(200, {'ok': True}, cookie=f'hecklarr_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200{secure}')
+                return self.login(body)
             if not self.authenticated():
                 return self.reply(401, {'error': 'Log in to continue'})
-            if self.path == '/api/logout':
-                cookies = http.cookies.SimpleCookie(self.headers.get('Cookie', ''))
-                with LOCK:
-                    for name in ['hecklarr_session', 'standuparr_session']:
-                        token = cookies.get(name)
-                        if token:
-                            SESSIONS.pop(hashlib.sha256(token.value.encode()).hexdigest(), None)
-                    saveJson(STATE_DIR / 'sessions.json', SESSIONS)
-                return self.reply(200, {'ok': True}, cookie=[name + '=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0'
-                                                           for name in ['hecklarr_session', 'standuparr_session']])
-            if self.path == '/api/settings':
-                patch = {key: str(body[key]).strip() for key in ['radarrUrl', 'feedBaseUrl', 'rootFolderPath'] if key in body}
-                for key in ['radarrUrl', 'feedBaseUrl']:
-                    if key in patch and urllib.parse.urlsplit(patch[key]).scheme not in ['http', 'https']:
-                        raise ValueError('Use an http or https URL')
-                for key in ['tmdbApiKey', 'radarrApiKey']:
-                    if body.get(key):
-                        patch[key] = str(body[key]).strip()
-                if 'qualityProfileId' in body:
-                    patch['qualityProfileId'] = int(body['qualityProfileId'])
-                saveSettings(patch)
-                return self.reply(200, publicSettings())
-            if self.path == '/api/comedians':
-                person_id = int(body['id'])
-                person = tmdb(f'person/{person_id}', SETTINGS)
-                with REFRESH_LOCK:
-                    people = SETTINGS['comedians'][:]
-                    if not any(row['id'] == person_id for row in people):
-                        people.append({'id': person_id, 'includeIds': [], 'excludeIds': []})
-                    saveSettings({'comedians': people})
-                result = publicSettings()
-                for row in result['comedians']:
-                    if row['id'] == person_id:
-                        row['name'] = person['name']
-                return self.reply(200, result)
-            if self.path == '/api/comedians/remove':
-                person_id = int(body.get('id', 0))
-                delete_from_radarr = body.get('deleteFromRadarr', False)
-                if person_id <= 0 or not isinstance(delete_from_radarr, bool):
-                    raise ValueError('Choose a comedian and deletion option')
-                result = removeComedian(person_id, delete_from_radarr)
-                return self.reply(200, {'settings': publicSettings(), **result})
-            if self.path == '/api/overrides':
-                with REFRESH_LOCK:
-                    people = json.loads(json.dumps(SETTINGS['comedians']))
-                    person = next(row for row in people if row['id'] == int(body['personId']))
-                    movie_id = int(body['movieId'])
-                    if movie_id <= 0 or body['action'] not in ['include', 'exclude']:
-                        raise ValueError('Choose include or exclude and a valid TMDB movie ID')
-                    for key in ['includeIds', 'excludeIds']:
-                        person[key] = [entry for entry in person.get(key, []) if entry != movie_id]
-                    person[body['action'] + 'Ids'].append(movie_id)
-                    patch = {'comedians': people}
-                    if body['action'] == 'include':
-                        patch['excludedMovieIds'] = [entry for entry in SETTINGS.get('excludedMovieIds', [])
-                                                     if entry != movie_id]
-                    saveSettings(patch)
-                return self.reply(200, publicSettings())
-            if self.path == '/api/specials/exclude':
-                movie_id = int(body.get('movieId', 0))
-                delete_from_radarr = body.get('deleteFromRadarr', False)
-                if movie_id <= 0 or not isinstance(delete_from_radarr, bool):
-                    raise ValueError('Choose a valid special and deletion option')
-                result = excludeSpecial(movie_id, delete_from_radarr)
-                return self.reply(200, result)
-            if self.path == '/api/refresh':
-                return self.reply(200, refresh(sync=True))
-            if self.path == '/api/sync':
-                if not SNAPSHOT:
-                    raise ValueError('Refresh the catalog first')
-                return self.reply(200, syncRadarr())
-            return self.reply(404, {'error': 'Not found'})
+            return self.authenticatedPost(self.path, body)
         except TimeoutError:
             self.close_connection = True
             self.connection.settimeout(self.timeout)
