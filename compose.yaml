@@ -4,7 +4,7 @@ services:
     pull_policy: missing
     restart: unless-stopped
     ports:
-      - "${HECKLARR_BIND_ADDRESS:-127.0.0.1}:6162:6162"
+      - "6162:6162"
     environment:
       TZ: ${TZ:-America/Detroit}
     volumes:

@@ -19,11 +19,11 @@ sudo chmod 700 config
 docker compose up -d
 ```
 
-Open [http://localhost:6162](http://localhost:6162) on the Docker host. The service listens on localhost by default. To access it from another computer, set `HECKLARR_BIND_ADDRESS` to the host's LAN IP in a `.env` file beside `compose.yaml`, then run `docker compose up -d` again. Use an HTTPS reverse proxy for access outside your private network.
+Open `http://<server-IP>:6162` from another computer on your network, or [http://localhost:6162](http://localhost:6162) on the Docker host. For localhost-only access, change the port mapping in `compose.yaml` to `127.0.0.1:6162:6162`. Use an HTTPS reverse proxy for access outside your private network.
 
 ## Configure
 
-1. Create an account and sign in.
+1. Create an account and sign in. Anyone who can reach a fresh installation can register; registration closes after the first account is created.
 2. Enter your Radarr address and API key, then select **Connect to Radarr**.
 3. Choose a destination folder Radarr can write to and a quality profile.
 4. Add your TMDB key. Set **Feed address for Radarr** to an address Radarr can reach.
