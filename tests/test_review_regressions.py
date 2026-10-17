@@ -1,6 +1,7 @@
 """Regression tests for the October 2026 code review findings."""
 
 import base64
+import copy
 import email.message
 import hashlib
 import json
@@ -354,6 +355,76 @@ class DownloadPollingTest(unittest.TestCase):
                 patch('builtins.print'), self.assertRaises(SystemExit):
             app.maintainMetadata()
         self.assertEqual(2, len(calls))
+
+
+class MovieListCacheTest(unittest.TestCase):
+    """The full Radarr movie list is re-read only when a cached state could be wrong."""
+
+    def setUp(self):
+        self.now = 1000.0
+        self.cache = app.MovieListCache(max_age=1800, missing_retry=300, clock=lambda: self.now)
+        self.queue = [{'movieId': 10, 'status': 'downloading'}]
+        self.movies = [{'id': 10, 'tmdbId': 100, 'hasFile': False, 'monitored': True, 'status': 'released'},
+                       {'id': 11, 'tmdbId': 101, 'hasFile': True}]
+        self.calls = []
+
+    def fetch(self, path, settings):
+        self.calls.append(path)
+        if path == 'movie':
+            return copy.deepcopy(self.movies)
+        return {'totalRecords': len(self.queue), 'records': copy.deepcopy(self.queue)}
+
+    def poll(self, movie_ids=frozenset({100, 101})):
+        self.calls.clear()
+        return app.fetchDownloadStatuses({}, set(movie_ids), fetch=self.fetch, cache=self.cache)
+
+    def test_steady_polls_read_only_the_queue(self):
+        self.assertEqual({'100': 'downloading', '101': 'downloaded'}, self.poll())
+        self.assertIn('movie', self.calls)
+        self.now += 60
+        self.assertEqual({'100': 'downloading', '101': 'downloaded'}, self.poll())
+        self.assertNotIn('movie', self.calls)
+
+    def test_finished_download_rereads_movies_so_it_shows_as_downloaded(self):
+        self.poll()
+        self.queue = []
+        self.movies[0]['hasFile'] = True
+        self.now += 60
+        self.assertEqual('downloaded', self.poll()['100'])
+        self.assertIn('movie', self.calls)
+
+    def test_tracked_set_change_age_and_invalidation_reread_movies(self):
+        self.poll()
+        self.now += 60
+        self.poll({100})
+        self.assertIn('movie', self.calls)
+        self.now += 1800
+        self.poll({100})
+        self.assertIn('movie', self.calls)
+        self.cache.invalidate()
+        self.poll({100})
+        self.assertIn('movie', self.calls)
+
+    def test_special_not_yet_in_radarr_is_rechecked_every_few_minutes(self):
+        self.assertEqual('not-in-radarr', self.poll({100, 102})['102'])
+        self.now += 60
+        self.poll({100, 102})
+        self.assertNotIn('movie', self.calls)
+        self.movies.append({'id': 12, 'tmdbId': 102, 'hasFile': False, 'monitored': True, 'status': 'released'})
+        self.now += 300
+        self.assertEqual('missing', self.poll({100, 102})['102'])
+        self.assertIn('movie', self.calls)
+
+    def test_hecklarr_changes_to_radarr_invalidate_the_cache(self):
+        saved = (app.DOWNLOAD_MOVIES, app.DOWNLOAD_REFRESH)
+        app.DOWNLOAD_MOVIES, app.DOWNLOAD_REFRESH = self.cache, threading.Event()
+        try:
+            self.poll()
+            app.invalidateDownloadCache()
+            self.assertIsNone(self.cache.movies)
+            self.assertTrue(app.DOWNLOAD_REFRESH.is_set())
+        finally:
+            app.DOWNLOAD_MOVIES, app.DOWNLOAD_REFRESH = saved
 
 
 if __name__ == '__main__':

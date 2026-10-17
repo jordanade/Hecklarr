@@ -62,7 +62,8 @@ class DownloadStateTest(unittest.TestCase):
         self.assertEqual({'100': 'downloading', '101': 'downloaded', '102': 'not-in-radarr'},
                          app.fetchDownloadStatuses({}, {100, 101, 102}, fetch=fetch))
         self.assertEqual(3, len(calls))
-        self.assertIn('page=2&', calls[-1])
+        self.assertIn('page=2&', calls[1])
+        self.assertEqual('movie', calls[-1])
 
     def test_incomplete_queue_is_not_silently_reported_as_missing(self):
         def fetch(path, settings):

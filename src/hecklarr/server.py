@@ -25,6 +25,7 @@ from .clients import requestJson as performJsonRequest
 from .discovery import buildSnapshot as buildDiscoverySnapshot
 from .discovery import classify  # noqa: F401 - re-exported for tests
 from .discovery import itemOwners, migrateSnapshot
+from .downloads import MovieListCache
 from .downloads import fetchDownloadStatuses as fetchRadarrDownloadStatuses
 from .downloads import movieDownloadState  # noqa: F401 - re-exported for tests
 
@@ -45,6 +46,7 @@ CACHE_MAX_AGE = dt.timedelta(days=180)
 PASSWORD_SLOTS = threading.BoundedSemaphore(2)
 DOWNLOAD_STATUSES = {'items': {}, 'updatedAt': None, 'lastError': None}
 DOWNLOAD_REFRESH = threading.Event()
+DOWNLOAD_MOVIES = MovieListCache()
 DOWNLOAD_POLL_SECONDS = 60
 # Radarr's movie list can be large, so download status is polled only while a
 # browser has asked for it recently.
@@ -161,7 +163,13 @@ def saveSettings(patch):
         SETTINGS = updated
         if previous_radarr != (SETTINGS.get('radarrUrl'), SETTINGS.get('radarrApiKey')):
             DOWNLOAD_STATUSES = {'items': {}, 'updatedAt': None, 'lastError': None}
-            DOWNLOAD_REFRESH.set()
+            invalidateDownloadCache()
+
+
+def invalidateDownloadCache():
+    """Re-read Radarr's movie list on the next poll, after Hecklarr changed Radarr or the catalog."""
+    DOWNLOAD_MOVIES.invalidate()
+    DOWNLOAD_REFRESH.set()
 
 
 def loadSettings():
@@ -197,8 +205,11 @@ def radarr(path, settings, body=None, method=None):
                        settings['radarrApiKey'], body, method)
 
 
-def fetchDownloadStatuses(settings, movie_ids, fetch=radarr):
-    return fetchRadarrDownloadStatuses(settings, movie_ids, fetch)
+def fetchDownloadStatuses(settings, movie_ids, fetch=None, cache=None):
+    # The live Radarr path shares one movie-list cache; injected fetchers get none.
+    if fetch is None:
+        fetch, cache = radarr, DOWNLOAD_MOVIES
+    return fetchRadarrDownloadStatuses(settings, movie_ids, fetch, cache)
 
 
 def updateDownloadStatuses():
@@ -217,6 +228,8 @@ def updateDownloadStatuses():
     with LOCK:
         if ((settings.get('radarrUrl'), settings.get('radarrApiKey'))
                 != (SETTINGS.get('radarrUrl'), SETTINGS.get('radarrApiKey'))):
+            # The poll may have cached the previous Radarr's movies.
+            DOWNLOAD_MOVIES.invalidate()
             return
         if result is None:
             DOWNLOAD_STATUSES = {**DOWNLOAD_STATUSES, 'lastError': 'Could not update Radarr download status'}
@@ -318,7 +331,7 @@ def refresh(sync=False):
                 saveJson(STATE_DIR / 'snapshot.json', snapshot)
                 SNAPSHOT = snapshot
                 LAST_ERROR = None
-            DOWNLOAD_REFRESH.set()
+            invalidateDownloadCache()
             print(f'{now()} Refreshed {len(snapshot["items"])} specials', flush=True)
             if sync and settings.get('radarrListId'):
                 radarr('command', settings, {'name': 'ImportListSync', 'definitionId': settings['radarrListId']})
@@ -366,6 +379,7 @@ def syncRadarr():
     saved = radarr(path, settings, body, 'PUT' if existing else 'POST')
     saveSettings({'radarrListId': saved['id']})
     radarr('command', settings, {'name': 'ImportListSync', 'definitionId': saved['id']})
+    invalidateDownloadCache()
     return {'id': saved['id'], 'rootFolderPath': root, 'name': saved['name']}
 
 
@@ -415,6 +429,8 @@ def excludeSpecial(movie_id, delete_from_radarr):
                     radarr(f"movie/{row['id']}?deleteFiles=true", settings, method='DELETE')
             except ValueError as error:
                 raise ValueError('The special was excluded from the feed, but Radarr deletion did not finish: ' + str(error)) from None
+            finally:
+                invalidateDownloadCache()
             if settings.get('radarrListId'):
                 try:
                     radarr('command', settings, {'name': 'ImportListSync',
@@ -463,6 +479,8 @@ def removeComedian(person_id, delete_from_radarr):
             except ValueError as error:
                 raise ValueError('Radarr deletion did not finish; the comedian remains in Hecklarr. '
                                  'Some matching movies may already have been removed: ' + str(error)) from None
+            finally:
+                invalidateDownloadCache()
 
         with LOCK:
             saveSettings({'comedians': [row for row in SETTINGS['comedians'] if row['id'] != person_id]})

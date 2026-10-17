@@ -43,7 +43,7 @@ Discovery covers specials listed as TMDB movies. Performances catalogued only as
 
 TMDB metadata can be incomplete, and an item in Hecklarr does not guarantee a release is available from your indexers.
 
-Badges beneath each title show its Radarr download status. Status refreshes every minute while Hecklarr is open in a browser, and pauses five minutes after the last visit; if Radarr is unavailable, Hecklarr keeps the last known status and marks it stale.
+Badges beneath each title show its Radarr download status. Status refreshes every minute while Hecklarr is open in a browser, and pauses five minutes after the last visit. Each refresh reads Radarr's download queue; the full movie list is re-read only when a tracked download finishes, after Hecklarr changes Radarr, or every 30 minutes; if Radarr is unavailable, Hecklarr keeps the last known status and marks it stale.
 
 ## TMDB data and credits
 

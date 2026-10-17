@@ -4,6 +4,8 @@ Network access and cache mutation stay in ``server.py``. Keeping the response
 interpretation here makes Radarr API changes testable without server state.
 """
 
+import time
+
 
 QUEUE_STATE_PRIORITY = [
     'import-blocked',
@@ -58,14 +60,41 @@ def movieDownloadState(movie, queued):
     return 'missing'
 
 
-def fetchDownloadStatuses(settings, movie_ids, fetch):
-    """Fetch every Radarr queue page and return states keyed by TMDB movie ID."""
-    if not movie_ids:
-        return {}
-    movies = fetch('movie', settings)
-    if not isinstance(movies, list):
-        raise ValueError('Invalid Radarr movie response')
-    by_tmdb = {row['tmdbId']: row for row in movies if row.get('tmdbId') in movie_ids}
+class MovieListCache:
+    """Remember Radarr's tracked movies between polls.
+
+    Radarr's movie list covers the whole library and can be several megabytes,
+    while the download queue is small. The full list is re-read only when a cached
+    state could be wrong: a tracked download left the queue (it may have imported),
+    the tracked set changed, a tracked special is not in Radarr yet, the caller
+    invalidated the cache after changing Radarr, or the cache is old.
+    """
+
+    def __init__(self, max_age=1800, missing_retry=300, clock=time.monotonic):
+        self.max_age = max_age
+        self.missing_retry = missing_retry
+        self.clock = clock
+        self.invalidate()
+
+    def invalidate(self):
+        self.movies = None
+        self.tracked = frozenset()
+        self.queued_ids = set()
+        self.fetched_at = 0.0
+
+    def needsRefresh(self, movie_ids, queued):
+        if self.movies is None or self.tracked != frozenset(movie_ids):
+            return True
+        age = self.clock() - self.fetched_at
+        if age >= self.max_age:
+            return True
+        if self.queued_ids - set(queued):
+            return True
+        return age >= self.missing_retry and any(movie_id not in self.movies for movie_id in movie_ids)
+
+
+def fetchQueue(settings, fetch):
+    """Read every Radarr queue page, keyed by Radarr movie ID."""
     queued = {}
     page = 1
     seen = 0
@@ -81,11 +110,32 @@ def fetchDownloadStatuses(settings, movie_ids, fetch):
             queued.setdefault(row.get('movieId'), []).append(row)
         seen += len(records)
         if seen >= total:
-            break
+            return queued
         # A non-advancing or implausibly long result prevents an infinite request loop.
         if not records or page >= 100:
             raise ValueError('Radarr queue could not be read completely')
         page += 1
+
+
+def fetchDownloadStatuses(settings, movie_ids, fetch, cache=None):
+    """Return download states keyed by TMDB movie ID, reusing a cached movie list when safe."""
+    if not movie_ids:
+        return {}
+    queued = fetchQueue(settings, fetch)
+    if cache is None or cache.needsRefresh(movie_ids, queued):
+        movies = fetch('movie', settings)
+        if not isinstance(movies, list):
+            raise ValueError('Invalid Radarr movie response')
+        by_tmdb = {row['tmdbId']: row for row in movies if row.get('tmdbId') in movie_ids}
+        if cache is not None:
+            cache.movies = by_tmdb
+            cache.tracked = frozenset(movie_ids)
+            cache.fetched_at = cache.clock()
+    else:
+        by_tmdb = cache.movies
+    if cache is not None:
+        tracked_radarr_ids = {row.get('id') for row in by_tmdb.values()}
+        cache.queued_ids = tracked_radarr_ids & set(queued)
     return {
         str(movie_id): movieDownloadState(
             by_tmdb.get(movie_id),
