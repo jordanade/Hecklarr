@@ -4,7 +4,7 @@
 
 Hecklarr's application source was assembled for this project with AI coding assistance. The reviewed source uses Python's standard library and browser APIs; no vendored application libraries, frontend packages, external fonts, video files, or performer photographs are included.
 
-This inventory records the material found in the release. It is not a guarantee of originality, trademark clearance, or noninfringement. A project license has not yet been selected; this notice does not grant a license to the application source.
+Hecklarr's application source is licensed under the [GNU General Public License v3.0](LICENSE) (GPL-3.0-only). This inventory records third-party material; it is not a guarantee of originality, trademark clearance, or noninfringement.
 
 ## TMDB logo and data
 
@@ -14,7 +14,7 @@ This inventory records the material found in the release. It is not a guarantee 
 - SHA-256: `8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c`
 - Conditions: [TMDB API terms](https://www.themoviedb.org/api-terms-of-use) and [attribution requirements](https://developer.themoviedb.org/docs/faq).
 
-TMDB branding and API data remain subject to their own terms and are not covered by a future license for Hecklarr's code. Users provide their own API credentials. The application identifies its API requests as `Hecklarr/0.1`, stores no movie posters or video, and expires cached metadata after 180 days. Commercial API use requires a separate agreement with TMDB.
+TMDB branding and API data remain subject to their own terms and are not covered by Hecklarr's GPL license. Users provide their own API credentials. The application identifies its API requests as `Hecklarr/0.1`, stores no movie posters or video, and expires cached metadata after 180 days. Commercial API use requires a separate agreement with TMDB.
 
 This application uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.
 
@@ -38,4 +38,4 @@ The source repository does not bundle Python, Alpine Linux, or their binaries. T
 - Alpine packages: [package information and licenses](https://pkgs.alpinelinux.org/packages).
 - Timezone database: [IANA timezone database](https://www.iana.org/time-zones).
 
-A built container contains additional OS libraries and tools with their own licenses, including copyleft components. A license chosen for Hecklarr does not replace those licenses. Publishing a container image requires a separate review of the exact built image's notices and applicable source-availability obligations.
+A built container contains additional OS libraries and tools with their own licenses, including copyleft components. Hecklarr's GPL license does not replace those licenses. Publishing a container image requires a separate review of the exact built image's notices and applicable source-availability obligations.

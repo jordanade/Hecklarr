@@ -71,3 +71,7 @@ docker compose up -d
 ```
 
 For help, check service status and logs with `docker compose ps` and `docker compose logs --tail 100 hecklarr`.
+
+## License
+
+Hecklarr is licensed under the [GNU General Public License v3.0](LICENSE) (GPL-3.0-only). Third-party materials retain their own terms; see [third-party notices](THIRD_PARTY_NOTICES.md).
