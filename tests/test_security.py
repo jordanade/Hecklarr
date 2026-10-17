@@ -1,6 +1,5 @@
 import concurrent.futures
 import http.client
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -14,9 +13,10 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location('hecklarr_security', Path(__file__).parents[1] / 'app.py')
-app = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(app)
+from load_app import loadApp
+
+
+app = loadApp('hecklarr_test_security')
 
 
 class RedirectTest(unittest.TestCase):

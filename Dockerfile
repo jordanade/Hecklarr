@@ -4,10 +4,10 @@ RUN apk add --no-cache tzdata \
     && python -m pip uninstall --yes pip \
     && rm -rf /usr/local/lib/python3.13/ensurepip
 WORKDIR /app
-COPY app.py index.html app.js style.css icon.png tmdb-logo.svg ./
-COPY hecklarr ./hecklarr
-ENV PYTHONUNBUFFERED=1 CONFIG_DIR=/config TZ=America/Detroit
+COPY index.html app.js style.css icon.png tmdb-logo.svg ./
+COPY src ./src
+ENV PYTHONPATH=/app/src PYTHONUNBUFFERED=1 CONFIG_DIR=/config TZ=America/Detroit
 USER 1000:1000
 EXPOSE 6162
 HEALTHCHECK --interval=60s --timeout=5s --start-period=180s CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:6162/api/health')"
-CMD ["python", "app.py"]
+CMD ["python", "-m", "hecklarr"]

@@ -1,7 +1,6 @@
 import copy
 import base64
 import hashlib
-import importlib.util
 import json
 from pathlib import Path
 import tempfile
@@ -11,9 +10,10 @@ import urllib.request
 import unittest
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location('hecklarr', Path(__file__).parents[1] / 'app.py')
-app = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(app)
+from load_app import loadApp
+
+
+app = loadApp('hecklarr_test_app')
 
 
 class ClassificationTest(unittest.TestCase):

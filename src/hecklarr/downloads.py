@@ -1,6 +1,6 @@
 """Pure Radarr download-state calculations.
 
-Network access and cache mutation stay in ``app.py``. Keeping the response
+Network access and cache mutation stay in ``server.py``. Keeping the response
 interpretation here makes Radarr API changes testable without server state.
 """
 

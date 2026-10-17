@@ -1,14 +1,13 @@
 import copy
-import importlib.util
 import json
 from pathlib import Path
 import unittest
 from unittest.mock import patch
 
+from load_app import loadApp
 
-spec = importlib.util.spec_from_file_location('hecklarr_discovery', Path(__file__).parents[1] / 'app.py')
-app = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(app)
+
+app = loadApp('hecklarr_test_discovery')
 REFERENCE_DATA = json.loads((Path(__file__).parent / 'fixtures' / 'standup-reference.json').read_text())
 REFERENCE = REFERENCE_DATA['specials']
 

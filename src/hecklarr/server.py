@@ -16,15 +16,18 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from zoneinfo import ZoneInfo
 
-from hecklarr.clients import HTTP_OPENER, SameOriginRedirectHandler
-from hecklarr.clients import TmdbAccessDenied, TmdbNotFound
-from hecklarr.clients import requestJson as performJsonRequest
-from hecklarr.discovery import buildSnapshot as buildDiscoverySnapshot
-from hecklarr.discovery import classify, normalize
-from hecklarr.downloads import fetchDownloadStatuses as fetchRadarrDownloadStatuses
-from hecklarr.downloads import movieDownloadState
+from .clients import HTTP_OPENER, SameOriginRedirectHandler
+from .clients import TmdbAccessDenied, TmdbNotFound
+from .clients import requestJson as performJsonRequest
+from .discovery import buildSnapshot as buildDiscoverySnapshot
+from .discovery import classify, normalize
+from .downloads import fetchDownloadStatuses as fetchRadarrDownloadStatuses
+from .downloads import movieDownloadState
 
 STATE_DIR = Path(os.environ.get('CONFIG_DIR', '/config'))
+# Python uses a src layout, while the browser assets remain at the repository
+# and container root so the README and image build share the same files.
+ASSET_DIR = Path(__file__).resolve().parents[2]
 # LOCK protects in-memory state and its persisted JSON mirrors. REFRESH_LOCK
 # serializes catalog-changing workflows that may release LOCK during network I/O.
 LOCK = threading.RLock()
@@ -463,7 +466,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def staticFile(self, path):
         filename, content_type = STATIC_FILES[path]
-        asset = Path(__file__).with_name(filename)
+        asset = ASSET_DIR / filename
         body = asset.read_bytes() if content_type.startswith('image/') else asset.read_text()
         return self.reply(200, body, content_type)
 
