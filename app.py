@@ -12,12 +12,13 @@ import secrets
 import tempfile
 import threading
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from zoneinfo import ZoneInfo
 
+from hecklarr.clients import HTTP_OPENER, SameOriginRedirectHandler
+from hecklarr.clients import TmdbAccessDenied, TmdbNotFound
+from hecklarr.clients import requestJson as performJsonRequest
 from hecklarr.discovery import buildSnapshot as buildDiscoverySnapshot
 from hecklarr.discovery import classify, normalize
 from hecklarr.downloads import fetchDownloadStatuses as fetchRadarrDownloadStatuses
@@ -40,26 +41,9 @@ DOWNLOAD_REFRESH = threading.Event()
 DOWNLOAD_POLL_SECONDS = 60
 
 
-class SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        def origin(url):
-            parsed = urllib.parse.urlsplit(url)
-            port = parsed.port
-            if port is None:
-                port = 443 if parsed.scheme == 'https' else 80
-            return (parsed.scheme.lower(), parsed.hostname, port)
-
-        target = urllib.parse.urlsplit(newurl)
-        if (target.username is not None or target.password is not None
-                or origin(req.full_url) != origin(newurl)):
-            raise ValueError('Redirect to a different origin was blocked. Use the final service address.')
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
-HTTP_OPENER = urllib.request.build_opener(SameOriginRedirectHandler())
-
-
 class RequestReader(io.RawIOBase):
+    """Enforce one total deadline across all header and body reads."""
+
     def __init__(self, connection, timeout):
         super().__init__()
         self.connection = connection
@@ -77,6 +61,8 @@ class RequestReader(io.RawIOBase):
 
 
 class LimitedThreadingHTTPServer(ThreadingHTTPServer):
+    """Bound concurrent request workers so slow clients cannot exhaust threads."""
+
     request_queue_size = 32
 
     def __init__(self, server_address, handler, max_workers=32):
@@ -105,14 +91,6 @@ class LimitedThreadingHTTPServer(ThreadingHTTPServer):
             super().process_request_thread(request, client_address)
         finally:
             self.worker_slots.release()
-
-
-class TmdbNotFound(ValueError):
-    pass
-
-
-class TmdbAccessDenied(ValueError):
-    pass
 
 
 def now():
@@ -162,36 +140,7 @@ def loadSettings():
 
 
 def requestJson(url, key, body=None, method=None, tmdb=False):
-    """Call TMDB or Radarr with bounded retries and origin-safe redirects."""
-    headers = {'Accept': 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Hecklarr/0.1'}
-    if tmdb:
-        if '.' in key:
-            headers['Authorization'] = 'Bearer ' + key
-        else:
-            url += ('&' if '?' in url else '?') + urllib.parse.urlencode({'api_key': key})
-    else:
-        headers['X-Api-Key'] = key
-    payload = json.dumps(body).encode() if body is not None else None
-    for attempt in range(3):
-        try:
-            req = urllib.request.Request(url, data=payload, headers=headers, method=method)
-            with HTTP_OPENER.open(req, timeout=30) as response:
-                payload = response.read()
-                return json.loads(payload) if payload else None
-        except urllib.error.HTTPError as error:
-            if tmdb and error.code == 404:
-                raise TmdbNotFound('TMDB entry no longer available') from None
-            if tmdb and error.code in [401, 403]:
-                raise TmdbAccessDenied('TMDB access denied; cached metadata cleared') from None
-            if (error.code == 429 or error.code >= 500) and attempt < 2:
-                time.sleep(min(int(error.headers.get('Retry-After', '2')), 10))
-                continue
-            raise ValueError(f'{"TMDB" if tmdb else "Radarr"} returned HTTP {error.code}') from None
-        except (urllib.error.URLError, TimeoutError):
-            if attempt < 2:
-                time.sleep(1)
-                continue
-            raise ValueError(f'{"TMDB" if tmdb else "Radarr"} connection failed') from None
+    return performJsonRequest(url, key, body, method, tmdb, HTTP_OPENER)
 
 
 def tmdb(path, settings):
