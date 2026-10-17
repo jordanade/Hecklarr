@@ -50,7 +50,7 @@ class RedirectTest(unittest.TestCase):
         self.base = 'http://127.0.0.1:' + str(self.servers[0].server_port)
 
     def tearDown(self):
-        for server, thread in zip(self.servers, self.threads):
+        for server, thread in zip(self.servers, self.threads, strict=True):
             server.shutdown()
             server.server_close()
             thread.join()

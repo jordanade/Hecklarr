@@ -81,12 +81,36 @@ def classify(movie, comedian):
     return False, 'No clear stand-up classification; review metadata or add an inclusion'
 
 
+def itemOwners(row):
+    """Return the TMDB person IDs that currently qualify a catalog item.
+
+    Snapshots written before shared ownership stored one ``personId``.
+    """
+    if 'personIds' in row:
+        return list(row['personIds'])
+    return [row['personId']] if row.get('personId') is not None else []
+
+
+def migrateSnapshot(snapshot):
+    """Convert single-owner catalog items to the shared-ownership shape in place."""
+    for row in snapshot.get('items', []):
+        if 'personIds' not in row:
+            row['personIds'] = itemOwners(row)
+            row['comedians'] = [row['comedian']] if row.get('comedian') else []
+            row.pop('personId', None)
+            row.pop('comedian', None)
+    return snapshot
+
+
 def buildSnapshot(settings, previous, fetch, timestamp, not_found_error):
     """Build a complete immutable catalog candidate from current TMDB metadata."""
     accepted = {}
     reviewed = []
     people = []
+    # A special shared by several tracked comedians is fetched once per refresh.
+    movies = {}
     selected = {person['id']: person for person in settings['comedians']}
+    globally_excluded = set(settings.get('excludedMovieIds', []))
     for selection in selected.values():
         try:
             profile = fetch(f'person/{selection["id"]}', settings)
@@ -95,9 +119,8 @@ def buildSnapshot(settings, previous, fetch, timestamp, not_found_error):
         except not_found_error:
             continue
         people.append({'id': person['id'], 'name': person['name']})
-        globally_excluded = set(settings.get('excludedMovieIds', []))
         retained_ids = {
-            row['tmdbId'] for row in previous.get('items', []) if row['personId'] == person['id']
+            row['tmdbId'] for row in previous.get('items', []) if person['id'] in itemOwners(row)
         } - set(person.get('excludeIds', [])) - globally_excluded
         credit_ids = {entry['id'] for entry in credits['cast']}
         candidates = set(credit_ids)
@@ -105,9 +128,13 @@ def buildSnapshot(settings, previous, fetch, timestamp, not_found_error):
         candidates.update(retained_ids)
         candidates.update(globally_excluded & (credit_ids | set(person.get('includeIds', []))))
         for movie_id in sorted(candidates):
-            try:
-                movie = fetch(f'movie/{movie_id}?append_to_response=keywords,credits', settings)
-            except not_found_error:
+            if movie_id not in movies:
+                try:
+                    movies[movie_id] = fetch(f'movie/{movie_id}?append_to_response=keywords,credits', settings)
+                except not_found_error:
+                    movies[movie_id] = None
+            movie = movies[movie_id]
+            if movie is None:
                 continue
             classifier_person = {
                 **person,
@@ -123,13 +150,14 @@ def buildSnapshot(settings, previous, fetch, timestamp, not_found_error):
                 'title': movie['title'],
                 'year': release_date[:4],
                 'releaseDate': release_date,
-                'personId': person['id'],
-                'comedian': person['name'],
                 'reason': reason,
             }
-            reviewed.append({**row, 'included': include})
+            reviewed.append({**row, 'personId': person['id'], 'comedian': person['name'], 'included': include})
             if include:
-                accepted[movie_id] = row
+                # Every qualifying comedian owns the item, so removing one keeps it for the others.
+                item = accepted.setdefault(movie_id, {**row, 'personIds': [], 'comedians': []})
+                item['personIds'].append(person['id'])
+                item['comedians'].append(person['name'])
     return {
         'updatedAt': timestamp(),
         'items': sorted(accepted.values(), key=lambda row: (row['year'], row['title'])),

@@ -12,4 +12,3 @@ snapshot.*.json
 sessions.*.json
 *.key
 *.pem
-icon-prompts.md

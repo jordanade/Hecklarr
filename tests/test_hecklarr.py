@@ -159,7 +159,7 @@ class ClassificationTest(unittest.TestCase):
         result = app.buildSnapshot({'comedians': [self.person]}, previous, fetch)
         self.assertEqual('Updated title', result['items'][0]['title'])
         self.assertEqual('2026', result['items'][0]['year'])
-        self.assertEqual('Current name', result['items'][0]['comedian'])
+        self.assertEqual(['Current name'], result['items'][0]['comedians'])
         self.assertIn('metadata refreshed', result['items'][0]['reason'])
         self.assertEqual([{'id': 52849, 'name': 'Current name'}], result['people'])
 
@@ -204,7 +204,7 @@ class ComedianRemovalTest(unittest.TestCase):
                         {'id': 3, 'tmdbId': 200, 'hasFile': True}]
         with patch.object(app, 'radarr', side_effect=fake_radarr):
             result = app.removeComedian(52849, True)
-        self.assertEqual({'removedFromRadarr': 1, 'hadFiles': 1, 'trackedCount': 1}, result)
+        self.assertEqual({'removedFromRadarr': 1, 'hadFiles': 1, 'trackedCount': 1, 'sharedCount': 0}, result)
         self.assertEqual([('movie', None), ('movie/1?deleteFiles=true', 'DELETE')], calls)
         self.assertEqual([109708], [person['id'] for person in app.SETTINGS['comedians']])
         self.assertEqual([200], [movie['tmdbId'] for movie in app.SNAPSHOT['items']])
@@ -215,13 +215,15 @@ class ComedianRemovalTest(unittest.TestCase):
         with patch.object(app, 'radarr') as radarr:
             result = app.removeComedian(52849, False)
         radarr.assert_not_called()
-        self.assertEqual({'removedFromRadarr': 0, 'hadFiles': 0, 'trackedCount': 1}, result)
+        self.assertEqual({'removedFromRadarr': 0, 'hadFiles': 0, 'trackedCount': 1, 'sharedCount': 0}, result)
         self.assertEqual([109708], [person['id'] for person in app.SETTINGS['comedians']])
 
 
 class HttpContractTest(unittest.TestCase):
     def setUp(self):
-        self.saved = (app.SETTINGS, app.SNAPSHOT, app.STATE_DIR, app.SESSIONS, app.LAST_ERROR, app.FAILURES)
+        self.saved = (app.SETTINGS, app.SNAPSHOT, app.STATE_DIR, app.SESSIONS, app.LAST_ERROR, app.FAILURES,
+                      app.SETUP_CODE)
+        app.SETUP_CODE = 'test-setup-code'
         self.directory = tempfile.TemporaryDirectory()
         app.STATE_DIR = Path(self.directory.name)
         salt = b'contract-test-salt'
@@ -244,7 +246,8 @@ class HttpContractTest(unittest.TestCase):
         self.server.server_close()
         self.thread.join()
         self.directory.cleanup()
-        app.SETTINGS, app.SNAPSHOT, app.STATE_DIR, app.SESSIONS, app.LAST_ERROR, app.FAILURES = self.saved
+        (app.SETTINGS, app.SNAPSHOT, app.STATE_DIR, app.SESSIONS, app.LAST_ERROR, app.FAILURES,
+         app.SETUP_CODE) = self.saved
 
     def request(self, path, body=None, headers=None):
         data = json.dumps(body).encode() if body is not None else None
@@ -272,7 +275,8 @@ class HttpContractTest(unittest.TestCase):
         app.SETTINGS.update({'authUser': '', 'authHash': '', 'radarrListId': None})
         with self.request('/api/auth') as response:
             self.assertTrue(json.load(response)['setupRequired'])
-        account = {'username': 'new-user', 'password': 'new-password', 'passwordConfirmation': 'new-password'}
+        account = {'username': 'new-user', 'password': 'new-password', 'passwordConfirmation': 'new-password',
+                   'setupCode': 'test-setup-code'}
         with self.request('/api/setup', account, {'X-Hecklarr': '1'}) as response:
             self.assertEqual(201, response.status)
             self.assertIsNone(response.headers.get('Set-Cookie'))
@@ -299,7 +303,8 @@ class HttpContractTest(unittest.TestCase):
 
     def test_first_run_account_supports_unicode_username(self):
         app.SETTINGS.update({'authUser': '', 'authHash': ''})
-        account = {'username': 'Jörg', 'password': 'long-password', 'passwordConfirmation': 'long-password'}
+        account = {'username': 'Jörg', 'password': 'long-password', 'passwordConfirmation': 'long-password',
+                   'setupCode': 'test-setup-code'}
         with self.request('/api/setup', account, {'X-Hecklarr': '1'}) as response:
             self.assertEqual(201, response.status)
         with self.request('/api/login', account, {'X-Hecklarr': '1'}) as response:
@@ -319,11 +324,12 @@ class HttpContractTest(unittest.TestCase):
 
     def test_setup_validates_credentials_and_requires_csrf_header(self):
         app.SETTINGS.update({'authUser': '', 'authHash': ''})
+        code = {'setupCode': 'test-setup-code'}
         for account, headers, status in [
-            ({'username': '', 'password': 'long-password', 'passwordConfirmation': 'long-password'}, {'X-Hecklarr': '1'}, 400),
-            ({'username': 'user', 'password': 'short', 'passwordConfirmation': 'short'}, {'X-Hecklarr': '1'}, 400),
-            ({'username': 'user', 'password': 'long-password', 'passwordConfirmation': 'mismatch'}, {'X-Hecklarr': '1'}, 400),
-            ({'username': 'user', 'password': 'long-password', 'passwordConfirmation': 'long-password'}, {}, 403),
+            ({'username': '', 'password': 'long-password', 'passwordConfirmation': 'long-password', **code}, {'X-Hecklarr': '1'}, 400),
+            ({'username': 'user', 'password': 'short', 'passwordConfirmation': 'short', **code}, {'X-Hecklarr': '1'}, 400),
+            ({'username': 'user', 'password': 'long-password', 'passwordConfirmation': 'mismatch', **code}, {'X-Hecklarr': '1'}, 400),
+            ({'username': 'user', 'password': 'long-password', 'passwordConfirmation': 'long-password', **code}, {}, 403),
         ]:
             with self.subTest(account=account, status=status), self.assertRaises(urllib.error.HTTPError) as context:
                 self.request('/api/setup', account, headers)
@@ -457,17 +463,18 @@ class HttpContractTest(unittest.TestCase):
         self.assertEqual(401, context.exception.code)
         context.exception.close()
 
-    def test_legacy_session_survives_rename_and_logs_out(self):
+    def test_legacy_standuparr_session_and_header_are_rejected(self):
         with self.request('/api/login', {'username': 'tester', 'password': 'test-password'},
                           {'X-Hecklarr': '1'}) as response:
             cookie = response.headers['Set-Cookie'].split(';')[0].replace('hecklarr_session=', 'standuparr_session=')
-        with self.request('/api/settings', headers={'Cookie': cookie}) as response:
-            self.assertEqual(200, response.status)
-        with self.request('/api/logout', {}, {'Cookie': cookie, 'X-Hecklarr': '1'}):
-            pass
         with self.assertRaises(urllib.error.HTTPError) as context:
             self.request('/api/settings', headers={'Cookie': cookie})
         self.assertEqual(401, context.exception.code)
+        context.exception.close()
+        with self.assertRaises(urllib.error.HTTPError) as context:
+            self.request('/api/settings', {'rootFolderPath': '/data/movies'},
+                         {'X-Api-Key': 'private-api-key', 'X-Standuparr': '1'})
+        self.assertEqual(403, context.exception.code)
         context.exception.close()
 
     def test_rename_updates_existing_radarr_list_by_id(self):
@@ -479,7 +486,7 @@ class HttpContractTest(unittest.TestCase):
             if path == 'config/importlist':
                 return {'listSyncLevel': 'disabled'}
             if path == 'importlist':
-                return [{'id': 1, 'name': 'Standuparr - Comedy', 'fields': [{'name': 'url'}]}]
+                return [{'id': 1, 'name': 'Old list name', 'fields': [{'name': 'url'}]}]
             if path == 'importlist/1':
                 self.assertEqual('PUT', method)
                 self.assertEqual('Hecklarr - Comedy', body['name'])

@@ -7,6 +7,8 @@ services:
       - "6162:6162"
     environment:
       TZ: ${TZ:-America/Detroit}
+      # Behind a reverse proxy, set its address or range so login limits apply per visitor:
+      # TRUSTED_PROXIES: 172.16.0.0/12
     volumes:
       - ./config:/config
     read_only: true

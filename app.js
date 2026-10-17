@@ -30,8 +30,9 @@ async function api(path, body, signal) {
   const response = await fetch('/api/' + path, {method: body === undefined ? 'GET' : 'POST',
     headers: {'Content-Type': 'application/json', 'X-Hecklarr': '1'},
     body: body === undefined ? undefined : JSON.stringify(body), signal});
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Request failed');
+  // A busy or failing server can answer without a JSON body.
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || `Request failed (HTTP ${response.status})`);
   return result;
 }
 function element(tag, text, className) {
@@ -97,6 +98,13 @@ function updateSearchExample() {
     if (search_example) sessionStorage.setItem('hecklarr-search-example', search_example);
   } catch {}
 }
+function ownsSpecial(movie, person) {
+  return (movie.personIds || []).includes(person.id);
+}
+function onlyOwner(movie, person) {
+  const owners = movie.personIds || [];
+  return owners.length > 0 && owners.every(id => id === person.id);
+}
 function renderPeople() {
   updateSearchExample();
   $('#people-count').textContent = settings.comedians.length;
@@ -113,7 +121,7 @@ function renderPeople() {
   review_filter.value = settings.comedians.some(person => String(person.id) === selected_review_filter) ? selected_review_filter : '';
   $('#exceptions').replaceChildren();
   for (const person of settings.comedians) {
-    const special_count = catalogItems.filter(movie => movie.personId === person.id).length;
+    const special_count = catalogItems.filter(movie => ownsSpecial(movie, person)).length;
     const checked = checkedComedians.has(person.id);
     const count_copy = checked ? `${special_count} special${special_count === 1 ? '' : 's'} tracked`
       : catalogRefreshPending ? 'Checking for specials…'
@@ -134,13 +142,15 @@ function renderPeople() {
     const remove = element('button', 'Remove', 'quiet');
     remove.addEventListener('click', () => {
       personToRemove = person;
-      const tracked_count = catalogItems.filter(movie => movie.personId === person.id).length;
+      const tracked_count = catalogItems.filter(movie => onlyOwner(movie, person)).length;
+      const shared_count = catalogItems.filter(movie => ownsSpecial(movie, person)).length - tracked_count;
       $('#remove-person-name').textContent = person.name;
       $('#delete-comedian-movies-copy').textContent =
-        `Also remove ${tracked_count} tracked special${tracked_count === 1 ? '' : 's'} from Radarr and delete their movie files, if present.`;
-      $('#delete-comedian-movies').checked = true;
+        `Also remove ${tracked_count} tracked special${tracked_count === 1 ? '' : 's'} from Radarr and delete their movie files, if present.` +
+        (shared_count ? ` ${shared_count} special${shared_count === 1 ? ' is' : 's are'} shared with another comedian and will be kept.` : '');
+      $('#delete-comedian-movies').checked = false;
       $('#remove-person-error').textContent = '';
-      $('#confirm-remove-person').textContent = 'Remove & delete';
+      $('#confirm-remove-person').textContent = 'Remove comedian';
       $('#remove-person-dialog').showModal();
     });
     row.append(label, remove); $('#comedians').append(row);
@@ -152,7 +162,7 @@ function renderPeople() {
 function renderSpecials() {
   const filter_id = $('#special-filter').value;
   const comedian = settings.comedians.find(person => String(person.id) === filter_id);
-  const filtered_items = catalogItems.filter(movie => !comedian || movie.comedian === comedian.name);
+  const filtered_items = catalogItems.filter(movie => !comedian || ownsSpecial(movie, comedian));
   $('#specials').replaceChildren();
   const newestFirst = [...filtered_items].sort((a, b) =>
     (b.releaseDate || b.year || '').localeCompare(a.releaseDate || a.year || '') || a.title.localeCompare(b.title));
@@ -169,8 +179,8 @@ function renderSpecials() {
       specialToExclude = movie;
       $('#exclude-special-title').textContent = movie.title;
       $('#exclude-error').textContent = '';
-      $('#delete-from-radarr').checked = true;
-      $('#confirm-exclude').textContent = 'Exclude & delete';
+      $('#delete-from-radarr').checked = false;
+      $('#confirm-exclude').textContent = 'Exclude from feed';
       $('#exclude-dialog').showModal();
     });
     const badge = element('span', 'Checking…', 'download-state status-checking');
@@ -178,7 +188,7 @@ function renderSpecials() {
     title.append(link, badge);
     const actions = element('td', undefined, 'table-actions');
     actions.append(exclude);
-    row.append(title, element('td', movie.year), element('td', movie.comedian), element('td', movie.reason), actions);
+    row.append(title, element('td', movie.year), element('td', (movie.comedians || []).join(', ')), element('td', movie.reason), actions);
     $('#specials').append(row);
   }
   $('#empty').textContent = comedian ? `No specials currently tracked for ${comedian.name}.` : 'Add a comedian and refresh to start your catalog.';
@@ -193,7 +203,7 @@ function renderStatus(status) {
   reviewedItems = (status.reviewed || []).filter(row => !row.included);
   $('#special-count').textContent = catalogItems.length;
   $('#connection').textContent = settings.radarrListId ? 'Connected to Radarr' : 'Ready to connect';
-  $('#updated').textContent = 'Daily refresh at 3 AM · America/Detroit';
+  $('#updated').textContent = 'Daily refresh at 3 AM · ' + (settings.timeZone || 'server time');
   $('#catalog-updated').textContent = status.updatedAt ? 'Updated ' + new Date(status.updatedAt).toLocaleString() : 'Waiting for first refresh';
   renderSpecials();
   renderReviewEntries();
@@ -287,6 +297,7 @@ $('#remove-person-form').addEventListener('submit', event => {
     else if (!result.removedFromRadarr) notify(`${person.name} was removed from Hecklarr. No tracked movies were found in Radarr to delete.`);
     else if (result.hadFiles) notify(`${person.name} was removed from Hecklarr and Radarr; its movie files were deleted.`);
     else notify(`${person.name} was removed from Hecklarr and Radarr. No movie files were present.`);
+    if (delete_from_radarr && result.sharedCount) notify(`${$('#notice').textContent} ${result.sharedCount} shared special${result.sharedCount === 1 ? ' was' : 's were'} kept for other comedians.`);
   });
 });
 $('#exclude-form').addEventListener('submit', event => {
@@ -416,7 +427,7 @@ $('#override-form').addEventListener('submit', event => {
     const auth = await api('auth');
     if (auth.setupRequired) $('#setup').hidden = false;
     else if (auth.authenticated) await loadDashboard();
-    else { $('#login').hidden = false; $('#login-form').elements.username.value = auth.username; }
+    else $('#login').hidden = false;
   } catch (error) { $('#login-error').textContent = error.message; }
 })();
 setInterval(() => {

@@ -1,0 +1,3 @@
+# Linting runs in CI; keep the rule set small and focused on real defects.
+[lint]
+select = ["E4", "E7", "E9", "F", "B"]

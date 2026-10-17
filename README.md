@@ -17,11 +17,13 @@ sudo chmod 700 config
 docker compose up -d
 ```
 
-Open `http://<server-IP>:6162` from another computer on your network, or [http://localhost:6162](http://localhost:6162) on the Docker host. For localhost-only access, change the port mapping in `compose.yaml` to `127.0.0.1:6162:6162`. Use an HTTPS reverse proxy for access outside your private network.
+Open `http://<server-IP>:6162` from another computer on your network, or [http://localhost:6162](http://localhost:6162) on the Docker host. For localhost-only access, change the port mapping in `compose.yaml` to `127.0.0.1:6162:6162`. Use an HTTPS reverse proxy for access outside your private network, and do not expose port 6162 to the internet directly.
+
+Behind a reverse proxy, set `TRUSTED_PROXIES` in `compose.yaml` to the proxy's address or range (comma-separated, CIDR allowed). Hecklarr then limits login attempts per visitor using `X-Forwarded-For`; without it, every visitor shares the proxy's limit.
 
 ## Configure
 
-1. Create an account and sign in. Anyone who can reach a fresh installation can register; registration closes after the first account is created.
+1. Create an account and sign in. Creating the first account requires the setup code Hecklarr prints at startup; find it with `docker compose logs hecklarr`. Registration closes after the first account is created.
 2. Enter your Radarr address and API key, then select **Connect to Radarr**.
 3. Choose a destination folder Radarr can write to and a quality profile.
 4. Add your TMDB key. Set **Feed address for Radarr** to an address Radarr can reach.
@@ -35,13 +37,13 @@ Set the destination as Radarr sees it, such as `/data/comedy`. Keep it separate 
 
 Add comedians from **Comedians**. Hecklarr refreshes the catalog and asks Radarr to sync the list; you can also refresh manually. Use **Entries left out** to review excluded TMDB credits or include a title by its TMDB movie ID.
 
-Removing a comedian removes their titles from the feed. **Exclude this** opens a confirmation with Radarr deletion selected; confirming permanently deletes files managed by Radarr. Uncheck it to exclude a title from the feed only. Disable the import list in Radarr to pause additions.
+Removing a comedian removes their titles from the feed. A special shared with another tracked comedian stays in the feed and in Radarr. **Exclude this** and **Remove** each offer to also delete the movie from Radarr; that option is off by default, and confirming it permanently deletes files managed by Radarr. Disable the import list in Radarr to pause additions.
 
 Discovery covers specials listed as TMDB movies. Performances catalogued only as TV episodes cannot be added to Radarr. Matching uses performer and writing credits, title billing, descriptions, and stage-name aliases. Ambiguous entries remain available for review; your exclusions take precedence.
 
 TMDB metadata can be incomplete, and an item in Hecklarr does not guarantee a release is available from your indexers.
 
-Badges beneath each title show its Radarr download status. Status refreshes in the background every minute; if Radarr is unavailable, Hecklarr keeps the last known status and marks it stale.
+Badges beneath each title show its Radarr download status. Status refreshes every minute while Hecklarr is open in a browser, and pauses five minutes after the last visit; if Radarr is unavailable, Hecklarr keeps the last known status and marks it stale.
 
 ## TMDB data and credits
 
@@ -52,6 +54,14 @@ Hecklarr expires cached TMDB metadata after 180 days. If you stop using TMDB or 
 ## Updates and backups
 
 Back up `config/settings.json` privately; it contains your account, API keys, and watchlist. The metadata cache in `config/snapshot.json` is renewable and should not be kept in long-term backups.
+
+## Recovery and automation
+
+Stop Hecklarr before editing `config/settings.json`, then start it again.
+
+- **Forgotten password:** set `authUser` and `authHash` to `""` and delete `config/sessions.json`. On the next start, Hecklarr prints a new setup code so you can create the account again. Your watchlist and connections are kept.
+- **Rotate the feed key:** delete the `feedKey` entry. After restarting, select **Save & apply to Radarr** so Radarr gets the new feed address.
+- **API access:** `apiKey` in `settings.json` authenticates scripts and dashboards through an `X-Api-Key` header. Requests that change anything also need an `X-Hecklarr: 1` header. Delete the entry and restart to rotate it.
 
 Pull and start the latest image:
 

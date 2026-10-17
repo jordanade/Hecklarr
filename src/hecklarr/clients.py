@@ -43,6 +43,16 @@ class SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
 
 
 HTTP_OPENER = urllib.request.build_opener(SameOriginRedirectHandler())
+IDEMPOTENT_METHODS = {'GET', 'HEAD', 'PUT', 'DELETE'}
+
+
+def retryDelay(value, default=2, limit=10):
+    """Read a Retry-After header in seconds; HTTP dates and bad values use the default."""
+    try:
+        delay = int(value)
+    except (TypeError, ValueError):
+        delay = default
+    return max(0, min(delay, limit))
 
 
 def requestJson(url, key, body=None, method=None, tmdb=False, opener=HTTP_OPENER):
@@ -61,7 +71,10 @@ def requestJson(url, key, body=None, method=None, tmdb=False, opener=HTTP_OPENER
         headers['X-Api-Key'] = key
     payload = json.dumps(body).encode() if body is not None else None
     service = 'TMDB' if tmdb else 'Radarr'
-    for attempt in range(3):
+    # A timed-out POST may already have created a Radarr list or root folder, so only
+    # requests that are safe to repeat are retried.
+    attempts = 3 if (method or ('POST' if payload is not None else 'GET')).upper() in IDEMPOTENT_METHODS else 1
+    for attempt in range(attempts):
         try:
             request = urllib.request.Request(url, data=payload, headers=headers, method=method)
             with opener.open(request, timeout=30) as response:
@@ -72,13 +85,13 @@ def requestJson(url, key, body=None, method=None, tmdb=False, opener=HTTP_OPENER
                 raise TmdbNotFound('TMDB entry no longer available') from None
             if tmdb and error.code in [401, 403]:
                 raise TmdbAccessDenied('TMDB access denied; cached metadata cleared') from None
-            if (error.code == 429 or error.code >= 500) and attempt < 2:
+            if (error.code == 429 or error.code >= 500) and attempt < attempts - 1:
                 # Retry-After is advisory but capped so one request cannot stall a worker indefinitely.
-                time.sleep(min(int(error.headers.get('Retry-After', '2')), 10))
+                time.sleep(retryDelay(error.headers.get('Retry-After') if error.headers else None))
                 continue
             raise ValueError(f'{service} returned HTTP {error.code}') from None
         except (urllib.error.URLError, TimeoutError):
-            if attempt < 2:
+            if attempt < attempts - 1:
                 time.sleep(1)
                 continue
             raise ValueError(f'{service} connection failed') from None

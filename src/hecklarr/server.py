@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import http.cookies
 import io
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -12,17 +13,20 @@ import secrets
 import tempfile
 import threading
 import time
+import traceback
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from zoneinfo import ZoneInfo
 
-from .clients import HTTP_OPENER, SameOriginRedirectHandler
+from .clients import HTTP_OPENER
+from .clients import SameOriginRedirectHandler  # noqa: F401 - re-exported for tests
 from .clients import TmdbAccessDenied, TmdbNotFound
 from .clients import requestJson as performJsonRequest
 from .discovery import buildSnapshot as buildDiscoverySnapshot
-from .discovery import classify, normalize
+from .discovery import classify  # noqa: F401 - re-exported for tests
+from .discovery import itemOwners, migrateSnapshot
 from .downloads import fetchDownloadStatuses as fetchRadarrDownloadStatuses
-from .downloads import movieDownloadState
+from .downloads import movieDownloadState  # noqa: F401 - re-exported for tests
 
 STATE_DIR = Path(os.environ.get('CONFIG_DIR', '/config'))
 # Python uses a src layout, while the browser assets remain at the repository
@@ -42,6 +46,37 @@ PASSWORD_SLOTS = threading.BoundedSemaphore(2)
 DOWNLOAD_STATUSES = {'items': {}, 'updatedAt': None, 'lastError': None}
 DOWNLOAD_REFRESH = threading.Event()
 DOWNLOAD_POLL_SECONDS = 60
+# Radarr's movie list can be large, so download status is polled only while a
+# browser has asked for it recently.
+DOWNLOAD_ACTIVE_SECONDS = 300
+LAST_STATUS_REQUEST = 0.0
+# Printed to the log at startup and required to create the first account.
+SETUP_CODE = None
+MAX_TRACKED_ADDRESSES = 1024
+
+
+def parseNetworks(value):
+    """Parse a comma-separated list of proxy addresses or CIDR ranges."""
+    networks = []
+    for entry in value.split(','):
+        entry = entry.strip()
+        if entry:
+            try:
+                networks.append(ipaddress.ip_network(entry, strict=False))
+            except ValueError:
+                raise ValueError(f'TRUSTED_PROXIES contains an invalid address: {entry}') from None
+    return networks
+
+
+TRUSTED_PROXIES = parseNetworks(os.environ.get('TRUSTED_PROXIES', ''))
+
+
+def addressTrusted(address):
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    return any(ip in network for network in TRUSTED_PROXIES)
 
 
 class RequestReader(io.RawIOBase):
@@ -113,14 +148,17 @@ def saveJson(path, data):
 
 
 def saveSettings(patch):
-    global DOWNLOAD_STATUSES
+    global DOWNLOAD_STATUSES, SETTINGS
     with LOCK:
         previous_radarr = (SETTINGS.get('radarrUrl'), SETTINGS.get('radarrApiKey'))
-        SETTINGS.update(patch)
+        # Build and persist a new dict, then swap it in, so threads reading SETTINGS
+        # without the lock never see a URL from one save paired with a key from another.
+        updated = {**SETTINGS, **patch}
         # Keep selection/exception IDs as preferences, not cached TMDB names.
-        for person in SETTINGS.get('comedians', []):
-            person.pop('name', None)
-        saveJson(STATE_DIR / 'settings.json', SETTINGS)
+        updated['comedians'] = [{key: value for key, value in person.items() if key != 'name'}
+                                for person in updated.get('comedians', [])]
+        saveJson(STATE_DIR / 'settings.json', updated)
+        SETTINGS = updated
         if previous_radarr != (SETTINGS.get('radarrUrl'), SETTINGS.get('radarrApiKey')):
             DOWNLOAD_STATUSES = {'items': {}, 'updatedAt': None, 'lastError': None}
             DOWNLOAD_REFRESH.set()
@@ -193,10 +231,38 @@ def cachedDownloadStatuses():
                 'items': {key: state for key, state in DOWNLOAD_STATUSES['items'].items() if key in tracked}}
 
 
+def noteStatusRequest():
+    """Record browser interest in download status, waking an idle poller at once."""
+    global LAST_STATUS_REQUEST
+    with LOCK:
+        idle = time.time() - LAST_STATUS_REQUEST >= DOWNLOAD_ACTIVE_SECONDS
+        LAST_STATUS_REQUEST = time.time()
+    if idle:
+        DOWNLOAD_REFRESH.set()
+
+
+def logUnexpected(context, error):
+    """Log an unexpected failure by type and location without its message, which may hold URLs."""
+    frames = traceback.extract_tb(error.__traceback__)
+    where = f' at {Path(frames[-1].filename).name}:{frames[-1].lineno}' if frames else ''
+    print(f'{now()} {context} failed: {type(error).__name__}{where}', flush=True)
+
+
+def downloadStatusTick():
+    """Poll Radarr once if a browser is watching; never let a failure end the poller."""
+    if time.time() - LAST_STATUS_REQUEST >= DOWNLOAD_ACTIVE_SECONDS:
+        return False
+    try:
+        updateDownloadStatuses()
+    except Exception as error:
+        logUnexpected('Download status update', error)
+    return True
+
+
 def scheduledDownloadStatuses():
     while True:
         DOWNLOAD_REFRESH.clear()
-        updateDownloadStatuses()
+        downloadStatusTick()
         DOWNLOAD_REFRESH.wait(DOWNLOAD_POLL_SECONDS)
 
 
@@ -231,7 +297,10 @@ def expireMetadata():
 
 def maintainMetadata():
     while True:
-        expireMetadata()
+        try:
+            expireMetadata()
+        except Exception as error:
+            logUnexpected('Metadata expiry', error)
         time.sleep(3600)
 
 
@@ -282,7 +351,7 @@ def syncRadarr():
     lists = radarr('importlist', settings)
     existing = next((entry for entry in lists if entry['id'] == settings.get('radarrListId')), None)
     if existing is None:
-        existing = next((entry for entry in lists if entry['name'] in ['Hecklarr - Comedy', 'Standuparr - Comedy']), None)
+        existing = next((entry for entry in lists if entry['name'] == 'Hecklarr - Comedy'), None)
     body = existing or next(entry for entry in radarr('importlist/schema', settings)
                             if entry['implementation'] == 'RadarrListImport')
     body.update({'name': 'Hecklarr - Comedy', 'rootFolderPath': root,
@@ -328,8 +397,14 @@ def excludeSpecial(movie_id, delete_from_radarr):
             row['included'] = False
             row['reason'] = 'Explicitly excluded from Hecklarr'
         if not matching_reviews and movie:
-            snapshot.setdefault('reviewed', []).append({**movie, 'included': False,
-                                                         'reason': 'Explicitly excluded from Hecklarr'})
+            # Review rows belong to one comedian each, matching what a refresh produces.
+            names = movie.get('comedians') or []
+            for index, owner in enumerate(itemOwners(movie)):
+                snapshot.setdefault('reviewed', []).append({
+                    'tmdbId': movie['tmdbId'], 'title': movie['title'], 'year': movie.get('year', ''),
+                    'releaseDate': movie.get('releaseDate', ''), 'personId': owner,
+                    'comedian': names[index] if index < len(names) else '',
+                    'included': False, 'reason': 'Explicitly excluded from Hecklarr'})
         with LOCK:
             saveJson(STATE_DIR / 'snapshot.json', snapshot)
             SNAPSHOT = snapshot
@@ -350,8 +425,21 @@ def excludeSpecial(movie_id, delete_from_radarr):
                 'hadFiles': sum(bool(row.get('hasFile')) for row in matches)}
 
 
+def withoutOwner(row, person_id):
+    """Return a catalog item with one comedian removed from its owners."""
+    owners = itemOwners(row)
+    names = row.get('comedians') or []
+    keep = [index for index, owner in enumerate(owners) if owner != person_id]
+    return {**row, 'personIds': [owners[index] for index in keep],
+            'comedians': [names[index] for index in keep if index < len(names)]}
+
+
 def removeComedian(person_id, delete_from_radarr):
-    """Remove one comedian, deleting Radarr movies first when requested."""
+    """Remove one comedian, deleting Radarr movies first when requested.
+
+    A special that another tracked comedian also qualifies for stays in the feed
+    and in Radarr; only specials this comedian alone owns are removed.
+    """
     global SNAPSHOT
     with REFRESH_LOCK:
         with LOCK:
@@ -360,8 +448,9 @@ def removeComedian(person_id, delete_from_radarr):
         person = next((row for row in settings.get('comedians', []) if row['id'] == person_id), None)
         if person is None:
             raise ValueError('That comedian is no longer in Hecklarr. Refresh and try again.')
-        movie_ids = {row['tmdbId'] for row in snapshot.get('items', [])
-                     if row.get('personId') == person_id}
+        owned = [row for row in snapshot.get('items', []) if person_id in itemOwners(row)]
+        movie_ids = {row['tmdbId'] for row in owned if set(itemOwners(row)) == {person_id}}
+        shared_count = len(owned) - len(movie_ids)
         matches = []
         if delete_from_radarr and movie_ids:
             matches = [row for row in radarr('movie', settings)
@@ -375,8 +464,11 @@ def removeComedian(person_id, delete_from_radarr):
                 raise ValueError('Radarr deletion did not finish; the comedian remains in Hecklarr. '
                                  'Some matching movies may already have been removed: ' + str(error)) from None
 
-        saveSettings({'comedians': [row for row in SETTINGS['comedians'] if row['id'] != person_id]})
-        snapshot['items'] = [row for row in snapshot.get('items', []) if row.get('personId') != person_id]
+        with LOCK:
+            saveSettings({'comedians': [row for row in SETTINGS['comedians'] if row['id'] != person_id]})
+        snapshot['items'] = [withoutOwner(row, person_id) if person_id in itemOwners(row) else row
+                             for row in snapshot.get('items', [])
+                             if row['tmdbId'] not in movie_ids]
         snapshot['reviewed'] = [row for row in snapshot.get('reviewed', [])
                                 if row.get('personId') != person_id]
         snapshot['people'] = [row for row in snapshot.get('people', []) if row.get('id') != person_id]
@@ -385,7 +477,8 @@ def removeComedian(person_id, delete_from_radarr):
             SNAPSHOT = snapshot
         return {'removedFromRadarr': len(matches),
                 'hadFiles': sum(bool(row.get('hasFile')) for row in matches),
-                'trackedCount': len(movie_ids)}
+                'trackedCount': len(movie_ids),
+                'sharedCount': shared_count}
 
 
 def checkPassword(password, encoded):
@@ -405,15 +498,17 @@ def checkPassword(password, encoded):
 def publicSettings():
     expireMetadata()
     with LOCK:
-        names = {row['personId']: row['comedian'] for row in SNAPSHOT.get('items', [])
-                 if 'personId' in row and 'comedian' in row}
+        names = {}
+        for row in SNAPSHOT.get('items', []):
+            names.update(zip(itemOwners(row), row.get('comedians') or [], strict=False))
         names.update({row['id']: row['name'] for row in SNAPSHOT.get('people', [])})
         allowed = ['radarrUrl', 'rootFolderPath', 'qualityProfileId', 'feedBaseUrl', 'radarrListId']
         return {**{key: SETTINGS.get(key) for key in allowed},
                 'comedians': [{**person, 'name': names.get(person['id'], f'TMDB person {person["id"]}')}
                               for person in SETTINGS.get('comedians', [])],
                 'hasTmdbKey': bool(SETTINGS.get('tmdbApiKey')),
-                'hasRadarrKey': bool(SETTINGS.get('radarrApiKey'))}
+                'hasRadarrKey': bool(SETTINGS.get('radarrApiKey')),
+                'timeZone': os.environ.get('TZ', 'America/Detroit')}
 
 
 STATIC_FILES = {
@@ -460,7 +555,7 @@ class Handler(BaseHTTPRequestHandler):
             cookies.load(self.headers.get('Cookie', ''))
         except http.cookies.CookieError:
             return False
-        token = cookies.get('hecklarr_session') or cookies.get('standuparr_session')
+        token = cookies.get('hecklarr_session')
         with LOCK:
             return bool(token and SESSIONS.get(hashlib.sha256(token.value.encode()).hexdigest(), 0) > time.time())
 
@@ -471,19 +566,22 @@ class Handler(BaseHTTPRequestHandler):
         return self.reply(200, body, content_type)
 
     def health(self):
-        return self.reply(200 if SNAPSHOT else 503, {
+        # Liveness only: a fresh install or a TMDB outage is not an unhealthy process.
+        result = {
             'ready': bool(SNAPSHOT),
             'count': len(SNAPSHOT.get('items', [])),
             'updatedAt': SNAPSHOT.get('updatedAt'),
-            'lastError': LAST_ERROR,
-        })
+        }
+        if self.authenticated():
+            result['lastError'] = LAST_ERROR
+        return self.reply(200, result)
 
     def authStatus(self):
-        return self.reply(200, {
-            'authenticated': self.authenticated(),
-            'username': SETTINGS['authUser'],
-            'setupRequired': not bool(SETTINGS.get('authHash')),
-        })
+        authenticated = self.authenticated()
+        result = {'authenticated': authenticated, 'setupRequired': not bool(SETTINGS.get('authHash'))}
+        if authenticated:
+            result['username'] = SETTINGS['authUser']
+        return self.reply(200, result)
 
     def movieFeed(self, query):
         if not hmac.compare_digest(query.get('key', [''])[0].encode(), SETTINGS['feedKey'].encode()):
@@ -513,7 +611,33 @@ class Handler(BaseHTTPRequestHandler):
                          for row in radarr('qualityprofile', settings)],
         })
 
+    def clientAddress(self):
+        """Return the visitor's address, reading X-Forwarded-For only from trusted proxies."""
+        peer = self.client_address[0]
+        if not addressTrusted(peer):
+            return peer
+        forwarded = [part.strip() for part in self.headers.get('X-Forwarded-For', '').split(',') if part.strip()]
+        # Proxies append, so the rightmost untrusted entry is the one a trusted proxy observed.
+        for address in reversed(forwarded):
+            if not addressTrusted(address):
+                return address
+        return forwarded[0] if forwarded else peer
+
+    def unexpectedError(self, error):
+        logUnexpected(f'{self.command} {urllib.parse.urlsplit(self.path).path}', error)
+        try:
+            self.close_connection = True
+            self.reply(500, {'error': 'Something went wrong. Check the Hecklarr log for details.'})
+        except OSError:
+            pass
+
     def do_GET(self):
+        try:
+            self.routeGet()
+        except Exception as error:
+            self.unexpectedError(error)
+
+    def routeGet(self):
         self.connection.settimeout(self.timeout)
         expireMetadata()
         url = urllib.parse.urlsplit(self.path)
@@ -535,9 +659,11 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/settings':
                 return self.reply(200, publicSettings())
             if path == '/api/status':
+                noteStatusRequest()
                 return self.reply(200, {**SNAPSHOT, 'lastError': LAST_ERROR,
                                         'downloadStatuses': cachedDownloadStatuses()})
             if path == '/api/download-status':
+                noteStatusRequest()
                 return self.reply(200, cachedDownloadStatuses())
             if path == '/api/search':
                 return self.searchPeople(query, settings)
@@ -561,9 +687,16 @@ class Handler(BaseHTTPRequestHandler):
         return body
 
     def setupAccount(self, body):
+        global SETUP_CODE
         with LOCK:
             if SETTINGS.get('authHash'):
                 return self.reply(409, {'error': 'An account already exists. Log in to continue.'})
+            ip = self.clientAddress()
+            if not self.reserveLoginAttempt(ip):
+                return self.reply(429, {'error': 'Too many attempts. Try again in ten minutes.'})
+            code = str(body.get('setupCode', '')).strip()
+            if not SETUP_CODE or not hmac.compare_digest(code.encode(), SETUP_CODE.encode()):
+                return self.reply(401, {'error': 'Enter the setup code shown in the Hecklarr log'})
             username = str(body.get('username', '')).strip()
             password = str(body.get('password', ''))
             if not username or len(username) > 80:
@@ -578,6 +711,8 @@ class Handler(BaseHTTPRequestHandler):
             encoded = ('scrypt$16384$8$1$' + base64.b64encode(salt).decode() + '$'
                        + base64.b64encode(hashed).decode())
             saveSettings({'authUser': username, 'authHash': encoded})
+            FAILURES.pop(ip, None)
+            SETUP_CODE = None
         return self.reply(201, {'ok': True})
 
     def reserveLoginAttempt(self, ip):
@@ -590,8 +725,12 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     FAILURES.pop(address)
             recent = FAILURES.get(ip, [])
-            if len(recent) >= 8 or (ip not in FAILURES and len(FAILURES) >= 1024):
+            if len(recent) >= 8:
                 return False
+            if ip not in FAILURES and len(FAILURES) >= MAX_TRACKED_ADDRESSES:
+                # Evict the quietest address instead of refusing everyone new, which would
+                # let an attacker with many addresses lock out the owner.
+                FAILURES.pop(min(FAILURES, key=lambda address: FAILURES[address][-1]))
             # Reserve before hashing so concurrent attempts cannot share the same budget.
             FAILURES[ip] = recent + [time.time()]
             return True
@@ -599,7 +738,7 @@ class Handler(BaseHTTPRequestHandler):
     def login(self, body):
         if not SETTINGS.get('authHash'):
             return self.reply(409, {'error': 'Create your account first'})
-        ip = self.client_address[0]
+        ip = self.clientAddress()
         if not self.reserveLoginAttempt(ip):
             return self.reply(429, {'error': 'Too many attempts. Try again in ten minutes.'})
         user_ok = hmac.compare_digest(str(body.get('username', '')).encode(), SETTINGS['authUser'].encode())
@@ -621,14 +760,11 @@ class Handler(BaseHTTPRequestHandler):
     def logout(self):
         cookies = http.cookies.SimpleCookie(self.headers.get('Cookie', ''))
         with LOCK:
-            for name in ['hecklarr_session', 'standuparr_session']:
-                token = cookies.get(name)
-                if token:
-                    SESSIONS.pop(hashlib.sha256(token.value.encode()).hexdigest(), None)
+            token = cookies.get('hecklarr_session')
+            if token:
+                SESSIONS.pop(hashlib.sha256(token.value.encode()).hexdigest(), None)
             saveJson(STATE_DIR / 'sessions.json', SESSIONS)
-        expired = [name + '=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0'
-                   for name in ['hecklarr_session', 'standuparr_session']]
-        return self.reply(200, {'ok': True}, cookie=expired)
+        return self.reply(200, {'ok': True}, cookie='hecklarr_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0')
 
     def updateSettings(self, body):
         patch = {key: str(body[key]).strip()
@@ -647,7 +783,9 @@ class Handler(BaseHTTPRequestHandler):
     def addComedian(self, body):
         person_id = int(body['id'])
         person = tmdb(f'person/{person_id}', SETTINGS)
-        with REFRESH_LOCK:
+        # Settings-only changes take LOCK, not REFRESH_LOCK, so they do not wait for a
+        # running refresh; the browser starts a fresh refresh afterwards.
+        with LOCK:
             people = SETTINGS['comedians'][:]
             if not any(row['id'] == person_id for row in people):
                 people.append({'id': person_id, 'includeIds': [], 'excludeIds': []})
@@ -667,7 +805,7 @@ class Handler(BaseHTTPRequestHandler):
         return self.reply(200, {'settings': publicSettings(), **result})
 
     def updateOverride(self, body):
-        with REFRESH_LOCK:
+        with LOCK:
             people = json.loads(json.dumps(SETTINGS['comedians']))
             person = next(row for row in people if row['id'] == int(body['personId']))
             movie_id = int(body['movieId'])
@@ -707,8 +845,14 @@ class Handler(BaseHTTPRequestHandler):
         return handler() if handler else self.reply(404, {'error': 'Not found'})
 
     def do_POST(self):
+        try:
+            self.routePost()
+        except Exception as error:
+            self.unexpectedError(error)
+
+    def routePost(self):
         expireMetadata()
-        if self.headers.get('X-Hecklarr') != '1' and self.headers.get('X-Standuparr') != '1':
+        if self.headers.get('X-Hecklarr') != '1':
             return self.reply(403, {'error': 'Missing request header'})
         try:
             body = self.readJsonBody()
@@ -723,7 +867,7 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             self.connection.settimeout(self.timeout)
             return self.reply(408, {'error': 'Request timed out'})
-        except (ValueError, KeyError, StopIteration) as error:
+        except (ValueError, KeyError, TypeError, StopIteration) as error:
             if isinstance(error, TmdbAccessDenied):
                 clearMetadata()
             return self.reply(400, {'error': str(error) if isinstance(error, ValueError) else 'Invalid request'})
@@ -740,15 +884,30 @@ def scheduledRefresh():
         try:
             refresh(sync=True)
         except ValueError:
-            pass
+            pass  # refresh() already logged the failure.
+        except Exception as error:
+            logUnexpected('Scheduled refresh', error)
+
+
+def ensureSetupCode():
+    """Create and log a one-time code while no account exists."""
+    global SETUP_CODE
+    with LOCK:
+        if SETTINGS.get('authHash'):
+            SETUP_CODE = None
+        elif not SETUP_CODE:
+            SETUP_CODE = secrets.token_hex(6)
+            print(f'{now()} No account yet. Setup code for the first account: {SETUP_CODE}', flush=True)
+        return SETUP_CODE
 
 
 def main():
     global SETTINGS, SNAPSHOT, SESSIONS
     STATE_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     SETTINGS = loadSettings()
+    ensureSetupCode()
     if (STATE_DIR / 'snapshot.json').exists():
-        SNAPSHOT = json.loads((STATE_DIR / 'snapshot.json').read_text())
+        SNAPSHOT = migrateSnapshot(json.loads((STATE_DIR / 'snapshot.json').read_text()))
     expireMetadata()
     if (STATE_DIR / 'sessions.json').exists():
         SESSIONS = json.loads((STATE_DIR / 'sessions.json').read_text())
