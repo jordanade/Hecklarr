@@ -2,6 +2,8 @@
 
 Track stand-up comedians and automatically add their specials to Radarr. Hecklarr uses TMDB to find titles and maintains a Radarr import list; Radarr handles searching and downloading.
 
+<img width="1222" height="808" alt="Screenshot 2026-10-16 at 5 30 17 AM" src="https://github.com/user-attachments/assets/e923905d-5569-44e7-9bff-a93739ee5513" />
+
 ## Install
 
 Requirements: Docker Compose, Radarr, working indexers and a download client, and a TMDB API key or Read Access Token.
