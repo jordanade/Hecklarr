@@ -25,7 +25,7 @@ This application uses TMDB and the TMDB APIs but is not endorsed, certified, or 
 The icon was generated and revised with OpenAI's image-generation tool. Prompts and visual-reference history are recorded in [icon-prompts.md](icon-prompts.md). The workflow used user-supplied visual references and a [microphone-clip product photograph](https://goknight.com/gator-gfw-mic-clip-standard-microphone-clip/) for hardware anatomy. Reference photographs are not bundled with the app; no performer likeness or product branding appears in the icon.
 
 - PNG SHA-256: `3729f07e6c997cf2a7b0e5e20ccb788d75061bd6ffd95dd29370099cb87dcdb0`
-- PNG format: 1254 × 1254 RGB.
+- PNG format: 600 × 600 RGB.
 
 AI assistance does not establish exclusivity or trademark clearance. The icon has not undergone a visual-similarity or trademark search.
 
