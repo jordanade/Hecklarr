@@ -349,7 +349,8 @@ class MonitoringTest(unittest.TestCase):
     def test_future_cutoff_is_local_and_stable_across_saves_and_restart(self):
         stamp = dt.datetime(2026, 10, 21, 23, 30, tzinfo=dt.timezone(dt.timedelta(hours=-4)))
         with patch.dict(app.os.environ, {'TZ': 'America/Detroit'}), patch.object(app.dt, 'datetime') as clock, \
-                patch.object(app, 'tmdb', return_value={'name': 'Dave Chappelle'}), patch.object(app, 'radarr'):
+                patch.object(app, 'tmdb', return_value={'name': 'Dave Chappelle'}), \
+                patch.object(app, 'radarr', return_value={'listSyncLevel': 'disabled'}):
             clock.now.return_value = stamp
             self.handler.addComedian({'id': 2, 'monitorMode': 'future'})
             self.assertTrue(any(getattr(call.args[0], 'key', None) == 'America/Detroit'
@@ -361,12 +362,33 @@ class MonitoringTest(unittest.TestCase):
         self.assertEqual('future', person['monitorMode'])
 
     def test_mode_changes_apply_to_feed_without_changing_existing_radarr_movies(self):
-        with patch.object(app, 'radarr') as radarr:
+        with patch.object(app, 'radarr', return_value={'listSyncLevel': 'disabled'}) as radarr:
             self.handler.updateComedianMode({'id': 1, 'monitorMode': 'all'})
             self.assertEqual(15, len(app.automaticMovies(app.SETTINGS, app.SNAPSHOT)))
             self.handler.updateComedianMode({'id': 1, 'monitorMode': 'manual'})
             self.assertEqual([], app.automaticMovies(app.SETTINGS, app.SNAPSHOT))
-        self.assertTrue(all(call.args[0] == 'command' for call in radarr.call_args_list))
+        self.assertEqual(['config/importlist', 'command'] * 2, [call.args[0] for call in radarr.call_args_list])
+
+    def test_mode_change_is_refused_while_radarr_list_cleanup_is_enabled(self):
+        with patch.object(app, 'radarr', return_value={'listSyncLevel': 'removeAndDelete'}) as radarr, \
+                self.assertRaisesRegex(ValueError, 'cleanup is enabled'):
+            self.handler.updateComedianMode({'id': 1, 'monitorMode': 'all'})
+        self.assertEqual('manual', app.SETTINGS['comedians'][0]['monitorMode'])
+        self.assertEqual(['config/importlist'], [call.args[0] for call in radarr.call_args_list])
+
+    def test_mode_change_saves_with_a_warning_when_radarr_is_unreachable(self):
+        with patch.object(app, 'radarr', side_effect=ValueError('Radarr connection failed')) as radarr:
+            status, result = self.handler.updateComedianMode({'id': 1, 'monitorMode': 'all'})
+        self.assertEqual('all', app.SETTINGS['comedians'][0]['monitorMode'])
+        self.assertIsNotNone(result['warning'])
+        self.assertEqual(['config/importlist'], [call.args[0] for call in radarr.call_args_list])
+
+    def test_refresh_does_not_sync_while_radarr_list_cleanup_is_enabled(self):
+        with patch.object(app, 'buildSnapshot', return_value={'updatedAt': app.now(), 'items': []}), \
+                patch.object(app, 'radarr', return_value={'listSyncLevel': 'keepAndUnmonitor'}) as radarr, \
+                patch('builtins.print'), self.assertRaisesRegex(ValueError, 'cleanup is enabled'):
+            app.refresh(sync=True)
+        self.assertNotIn('command', [call.args[0] for call in radarr.call_args_list])
 
     def test_empty_feed_setup_only_acknowledges_the_specific_warning(self):
         warning = {'errorMessage': 'No results were returned from your import list, please check your settings and the log for details.', 'isWarning': True}

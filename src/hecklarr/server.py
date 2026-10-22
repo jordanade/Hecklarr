@@ -352,7 +352,7 @@ def refresh(sync=False):
             invalidateDownloadCache()
             print(f'{now()} Refreshed {len(snapshot["items"])} specials', flush=True)
             if sync and settings.get('radarrListId'):
-                radarr('command', settings, {'name': 'ImportListSync', 'definitionId': settings['radarrListId']})
+                syncImportList(settings)
             return snapshot
         except Exception as error:
             if isinstance(error, TmdbAccessDenied):
@@ -361,6 +361,23 @@ def refresh(sync=False):
             action = 'keeping valid previous feed' if SNAPSHOT else 'no cached feed available'
             print(f'{now()} Refresh failed: {LAST_ERROR}; {action}', flush=True)
             raise ValueError(LAST_ERROR) from None
+
+
+def listCleanupDisabled(settings):
+    cleanup = radarr('config/importlist', settings)
+    return isinstance(cleanup, dict) and cleanup.get('listSyncLevel') == 'disabled'
+
+
+def syncImportList(settings):
+    """Ask Radarr to re-read the feed only while its list cleanup cannot act on removed titles.
+
+    Mode changes and refreshes routinely drop titles from the feed. With cleanup
+    enabled, Radarr would unmonitor or delete those movies, so this is checked
+    on every sync rather than only when the list is first applied.
+    """
+    if not listCleanupDisabled(settings):
+        raise ValueError('Radarr import-list cleanup is enabled. Disable it in Radarr, then refresh the catalog')
+    radarr('command', settings, {'name': 'ImportListSync', 'definitionId': settings['radarrListId']})
 
 
 def syncRadarr():
@@ -894,6 +911,17 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(mode, str) or mode not in MONITOR_MODES:
             raise ValueError('Choose Manual, Future specials only, or All specials')
         with LOCK:
+            settings = dict(SETTINGS)
+        cleanup_disabled = None
+        if settings.get('radarrListId'):
+            try:
+                cleanup_disabled = listCleanupDisabled(settings)
+            except ValueError:
+                pass  # Save anyway; the warning below asks for a refresh once Radarr is back.
+            if cleanup_disabled is False:
+                raise ValueError('Radarr import-list cleanup is enabled, so a mode change could make Radarr '
+                                 "unmonitor or delete this comedian's movies. Disable it in Radarr first.")
+        with LOCK:
             people = json.loads(json.dumps(SETTINGS['comedians']))
             person = next((row for row in people if row['id'] == person_id), None)
             if person is None:
@@ -903,9 +931,11 @@ class Handler(BaseHTTPRequestHandler):
             person['monitorMode'] = mode
             saveSettings({'comedians': people})
         warning = None
-        if SETTINGS.get('radarrListId'):
+        if settings.get('radarrListId'):
             try:
-                radarr('command', SETTINGS, {'name': 'ImportListSync', 'definitionId': SETTINGS['radarrListId']})
+                if cleanup_disabled is None:
+                    raise ValueError('Radarr cleanup setting unavailable')
+                radarr('command', settings, {'name': 'ImportListSync', 'definitionId': settings['radarrListId']})
             except ValueError:
                 warning = 'Mode saved, but Radarr did not confirm the list sync. Try refreshing the catalog.'
         return self.reply(200, {'settings': publicSettings(), 'warning': warning})
