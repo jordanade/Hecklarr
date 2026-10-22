@@ -355,19 +355,26 @@ class MonitoringTest(unittest.TestCase):
             tmdb.assert_not_called()
 
     def test_future_cutoff_is_local_and_stable_across_saves_and_restart(self):
-        stamp = dt.datetime(2026, 10, 21, 23, 30, tzinfo=dt.timezone(dt.timedelta(hours=-4)))
-        with patch.dict(app.os.environ, {'TZ': 'America/Detroit'}), patch.object(app.dt, 'datetime') as clock, \
+        today = [dt.date(2026, 10, 21)]
+        with patch.object(app, 'localToday', side_effect=lambda: today[0]), \
                 patch.object(app, 'tmdb', return_value={'name': 'Dave Chappelle'}), \
                 patch.object(app, 'radarr', return_value={'listSyncLevel': 'disabled'}):
-            clock.now.return_value = stamp
             self.handler.addComedian({'id': 2, 'monitorMode': 'future'})
-            self.assertTrue(any(getattr(call.args[0], 'key', None) == 'America/Detroit'
-                                for call in clock.now.call_args_list))
-            clock.now.return_value = stamp + dt.timedelta(days=7)
+            today[0] += dt.timedelta(days=7)
             self.handler.updateComedianMode({'id': 2, 'monitorMode': 'future'})
         person = next(row for row in app.loadSettings()['comedians'] if row['id'] == 2)
         self.assertEqual('2026-10-21', person['monitorAfter'])
         self.assertEqual('future', person['monitorMode'])
+
+    def test_local_date_follows_the_configured_timezone_and_survives_an_invalid_one(self):
+        # UTC+14 and UTC-11 are always on different calendar dates.
+        with patch.dict(app.os.environ, {'TZ': 'Pacific/Kiritimati'}):
+            ahead = app.localToday()
+        with patch.dict(app.os.environ, {'TZ': 'Pacific/Pago_Pago'}):
+            behind = app.localToday()
+        self.assertEqual(dt.timedelta(days=1), ahead - behind)
+        with patch.dict(app.os.environ, {'TZ': 'Not/AZone'}):
+            self.assertEqual(dt.timezone.utc, app.localZone())
 
     def test_mode_changes_apply_to_feed_without_changing_existing_radarr_movies(self):
         with patch.object(app, 'radarr', return_value={'listSyncLevel': 'disabled'}) as radarr:

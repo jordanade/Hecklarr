@@ -16,7 +16,7 @@ import time
 import traceback
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .clients import HTTP_OPENER
 from .clients import SameOriginRedirectHandler  # noqa: F401 - re-exported for tests
@@ -140,6 +140,18 @@ class LimitedThreadingHTTPServer(ThreadingHTTPServer):
 
 def now():
     return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
+def localZone():
+    """The application's timezone; an unknown TZ falls back to UTC instead of failing requests."""
+    try:
+        return ZoneInfo(os.environ.get('TZ', 'America/Detroit'))
+    except (ZoneInfoNotFoundError, ValueError):
+        return dt.timezone.utc
+
+
+def localToday():
+    return dt.datetime.now(localZone()).date()
 
 
 def saveJson(path, data):
@@ -838,7 +850,7 @@ class Handler(BaseHTTPRequestHandler):
             if not any(row['id'] == person_id for row in people):
                 selection = {'id': person_id, 'includeIds': [], 'excludeIds': [], 'monitorMode': mode}
                 if mode == 'future':
-                    selection['monitorAfter'] = dt.datetime.now(ZoneInfo(os.environ.get('TZ', 'America/Detroit'))).date().isoformat()
+                    selection['monitorAfter'] = localToday().isoformat()
                 people.append(selection)
             saveSettings({'comedians': people})
         result = publicSettings()
@@ -869,7 +881,7 @@ class Handler(BaseHTTPRequestHandler):
             if person is None:
                 raise ValueError('That comedian is no longer in Hecklarr. Refresh and try again.')
             if mode == 'future' and person.get('monitorMode') != 'future':
-                person['monitorAfter'] = dt.datetime.now(ZoneInfo(os.environ.get('TZ', 'America/Detroit'))).date().isoformat()
+                person['monitorAfter'] = localToday().isoformat()
             person['monitorMode'] = mode
             saveSettings({'comedians': people})
         warning = None
@@ -970,7 +982,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def scheduledRefresh():
     while True:
-        zone = ZoneInfo(os.environ.get('TZ', 'America/Detroit'))
+        zone = localZone()
         local = dt.datetime.now(zone)
         target = local.replace(hour=3, minute=0, second=0, microsecond=0)
         if target <= local:

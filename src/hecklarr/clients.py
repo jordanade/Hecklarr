@@ -16,7 +16,7 @@ class TmdbAccessDenied(ValueError):
 
 
 class RadarrValidationError(ValueError):
-    """Keep validation failures available for narrowly acknowledging empty lists."""
+    """Radarr rejected a request with HTTP 400; failures holds its parsed validation body, if any."""
 
     def __init__(self, failures):
         super().__init__('Radarr returned HTTP 400')
