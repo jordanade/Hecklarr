@@ -37,7 +37,8 @@ Set the destination as Radarr sees it, such as `/data/comedy`. Keep it separate 
 
 ## Use
 
-Search prioritizes exact names and matching name prefixes, then popularity within equally relevant matches.
+Search prioritizes matching people whose TMDB biography identifies them as comedians, or who already have specials in your catalog, then popularity. Other people stay available below them; missing biographies do not hide results. Match position within a name does not affect priority. Biography checks are shared and cached for a day, with a maximum 1.5-second wait before falling back to the available evidence.
+Results open in a viewport-limited overlay with their own scrolling pane. Use the × in the search field to clear both the query and results.
 
 Find comedians under **Comedians**, choose an addition mode directly in the search result, and click **Add**. New results default to **All**, which can immediately add and download the existing catalog. Every mode keeps all discovered titles visible in **Stand-up specials**:
 

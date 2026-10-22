@@ -122,11 +122,17 @@ details:not([open]) > summary { margin-bottom: 0; }
 .person button:hover { color: #f0a18d; }
 .person { flex-wrap: wrap; }
 .person-summary { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.comedian-search { padding: 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
-.comedian-search #search-form > label, .comedian-search #search-form > button { margin-bottom: 0; }
-#search-results:not(:empty) { margin-top: 12px; border-top: 1px solid var(--line); }
+.comedian-search { position: relative; z-index: 20; padding: 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
+.comedian-search #search-form label, .comedian-search #search-form > button { margin-bottom: 0; }
+.search-field { position: relative; margin-top: 6px; }
+.search-field input { margin-top: 0; padding-right: 34px; }
+.clear-search { position: absolute; top: 50%; right: 3px; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 7px; border: 0; background: transparent; color: var(--muted); }
+.clear-search:hover { color: var(--text); }
+.clear-search svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; }
+#search-results { position: fixed; z-index: 30; padding: 0 12px 12px; overflow-y: auto; overscroll-behavior: contain; background: var(--panel); border: 1px solid #53534c; border-radius: 4px; box-shadow: 0 10px 30px #0006; }
+#search-results:empty { display: none; }
 #search-results > .hint { margin: 12px 0 0; }
-.search-results-heading { margin: 12px 0 0; font-size: inherit; color: var(--muted); }
+.search-results-heading { position: sticky; top: 0; z-index: 1; margin: 0; padding: 12px 0 8px; background: var(--panel); font-size: inherit; color: var(--muted); }
 #following-heading { margin: 20px 0 0; }
 .result { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 12px; }
 .result:last-child { border-bottom: 0; padding-bottom: 0; }

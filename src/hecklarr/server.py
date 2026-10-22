@@ -29,7 +29,7 @@ from .downloads import MovieListCache
 from .downloads import fetchDownloadStatuses as fetchRadarrDownloadStatuses
 from .downloads import movieDownloadState  # noqa: F401 - re-exported for tests
 from .monitoring import MONITOR_MODES, automaticMovies, deleteMovieFile, movieMonitoring, setMovieMonitoring
-from .search import rankPeople
+from .search import ComedianSearchCache, rankPeople
 
 STATE_DIR = Path(os.environ.get('CONFIG_DIR', '/config'))
 # Python uses a src layout, while the browser assets remain at the repository
@@ -48,6 +48,7 @@ SETTINGS = {}
 SNAPSHOT = {}
 LAST_ERROR = None
 CACHE_MAX_AGE = dt.timedelta(days=180)
+SEARCH_COMEDIANS = ComedianSearchCache()
 PASSWORD_SLOTS = threading.BoundedSemaphore(2)
 DOWNLOAD_STATUSES = {'items': {}, 'movies': {}, 'messages': {}, 'pendingMovieIds': [], 'updatedAt': None, 'lastError': None}
 DOWNLOAD_REFRESH = threading.Event()
@@ -654,12 +655,15 @@ class Handler(BaseHTTPRequestHandler):
         if len(term) < 2:
             raise ValueError('Enter at least two characters')
         data = tmdb('search/person?' + urllib.parse.urlencode({'query': term}), settings)
+        comedian_ids = SEARCH_COMEDIANS.comedianIds(data['results'], settings, tmdb)
+        with LOCK:
+            comedian_ids.update(owner for movie in SNAPSHOT.get('items', []) for owner in itemOwners(movie))
         return self.reply(200, [{
             'id': row['id'],
             'name': row['name'],
             'knownFor': ', '.join(movie.get('title', movie.get('name', ''))
                                   for movie in row.get('known_for', [])[:3]),
-        } for row in rankPeople(data['results'], term)])
+        } for row in rankPeople(data['results'], term, comedian_ids)])
 
     def radarrOptions(self, settings):
         return self.reply(200, {

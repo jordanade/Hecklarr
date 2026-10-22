@@ -1,6 +1,7 @@
 const $ = (selector) => document.querySelector(selector);
 let settings;
 let search_example;
+let searchGeneration = 0;
 const searchExamples = [
   'Bill Burr', 'Louis C.K.', 'Sheng Wang', 'Maria Bamford',
   'Taylor Tomlinson', 'Nate Bargatze', 'Gary Gulman', 'Tig Notaro',
@@ -584,9 +585,94 @@ $('#settings-form').addEventListener('submit', event => {
     notify('Settings saved and applied to Radarr. New specials will go to ' + result.rootFolderPath + '.');
   });
 });
+function positionSearchResults() {
+  const results = $('#search-results');
+  if (results.hidden || !results.hasChildNodes()) return;
+  const anchor = $('.comedian-search').getBoundingClientRect();
+  const viewport_left = window.visualViewport?.offsetLeft || 0;
+  const viewport_width = window.visualViewport?.width || window.innerWidth;
+  const viewport_top = window.visualViewport?.offsetTop || 0;
+  const viewport_bottom = viewport_top + (window.visualViewport?.height || window.innerHeight);
+  if (anchor.bottom <= viewport_top || anchor.top >= viewport_bottom) {
+    results.hidden = true;
+    return;
+  }
+  // Fixed positioning keeps this pane inside the visible viewport without
+  // moving the Following list when results open, resize, or scroll.
+  const top_limit = viewport_top + 12;
+  const bottom_limit = viewport_bottom - 12;
+  const below_top = Math.max(top_limit, Math.min(bottom_limit, anchor.bottom + 6));
+  const above_bottom = Math.max(top_limit, Math.min(bottom_limit, anchor.top - 6));
+  const below = Math.max(0, bottom_limit - below_top);
+  const above = Math.max(0, above_bottom - top_limit);
+  const opens_above = below < 180 && above > below;
+  const width = Math.min(anchor.width, viewport_width - 24);
+  results.style.width = width + 'px';
+  results.style.left = Math.max(viewport_left + 12, Math.min(anchor.left, viewport_left + viewport_width - width - 12)) + 'px';
+  results.style.maxHeight = (opens_above ? above : below) + 'px';
+  results.style.top = (opens_above ? above_bottom - results.getBoundingClientRect().height : below_top) + 'px';
+}
+function clearSearch() {
+  searchGeneration++;
+  $('#search').value = '';
+  $('#search-results').replaceChildren();
+  $('#search-results').hidden = true;
+  $('#clear-search').hidden = true;
+  $('#search').focus();
+}
+$('#clear-search').addEventListener('click', clearSearch);
+$('#search').addEventListener('input', () => {
+  searchGeneration++;
+  $('#clear-search').hidden = !$('#search').value;
+  $('#search-results').replaceChildren();
+  $('#search-results').hidden = true;
+});
+$('#search').addEventListener('focus', () => {
+  if ($('#search-results').hasChildNodes()) {
+    $('#search-results').hidden = false;
+    positionSearchResults();
+  }
+});
+document.addEventListener('pointerdown', event => {
+  if (!$('.comedian-search').contains(event.target)) {
+    searchGeneration++;
+    $('#search-results').hidden = true;
+  }
+});
+$('.comedian-search').addEventListener('focusout', event => {
+  // Disabling the Search button also blurs it; only an actual focus move away
+  // should dismiss the pane or invalidate the request that just started.
+  if (event.relatedTarget && !$('.comedian-search').contains(event.relatedTarget)) {
+    searchGeneration++;
+    $('#search-results').hidden = true;
+  }
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && ($('.comedian-search').contains(document.activeElement) || !$('#search-results').hidden)) {
+    event.preventDefault();
+    searchGeneration++;
+    $('#search-results').hidden = true;
+    $('#search').focus();
+    // Focusing the query can reopen saved results; Escape explicitly dismisses them.
+    $('#search-results').hidden = true;
+  }
+});
+window.addEventListener('resize', positionSearchResults);
+window.addEventListener('scroll', positionSearchResults, true);
+window.visualViewport?.addEventListener('resize', positionSearchResults);
+window.visualViewport?.addEventListener('scroll', positionSearchResults);
 $('#search-form').addEventListener('submit', event => {
   event.preventDefault(); busy(event.submitter, async () => {
-    const people = await api('search?q=' + encodeURIComponent($('#search').value));
+    const generation = ++searchGeneration;
+    let people;
+    try {
+      people = await api('search?q=' + encodeURIComponent($('#search').value));
+    } catch (error) {
+      if (generation === searchGeneration) throw error;
+      return;
+    }
+    // Clearing or editing the query must not allow an older response to reopen it.
+    if (generation !== searchGeneration) return;
     $('#search-results').replaceChildren(element('h3', 'Search results', 'search-results-heading'));
     if (!people.length) $('#search-results').append(element('p', 'No matching people found.', 'hint'));
     for (const person of people) {
@@ -605,6 +691,7 @@ $('#search-form').addEventListener('submit', event => {
           settings = await api('comedians', {id: person.id, monitorMode: monitor_mode});
           renderPeople();
           $('#search-results').replaceChildren();
+          $('#search-results').hidden = true;
           await refreshCatalog();
           $('#special-filter').value = person.id;
           renderSpecials();
@@ -613,6 +700,9 @@ $('#search-form').addEventListener('submit', event => {
       });
       row.append(text, modes, button); $('#search-results').append(row);
     }
+    $('#search-results').hidden = false;
+    positionSearchResults();
+    $('#search-results').scrollTop = 0;
   });
 });
 $('#override-form').addEventListener('submit', event => {
