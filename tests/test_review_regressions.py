@@ -109,13 +109,6 @@ class SharedSpecialTest(unittest.TestCase):
         app.migrateSnapshot(legacy)
         self.assertEqual([{'tmdbId': 7, 'personIds': [3], 'comedians': ['Gamma'], 'title': 'Old'}], legacy['items'])
 
-    def test_excluding_shared_special_leaves_a_review_row_for_each_owner(self):
-        app.SNAPSHOT['reviewed'] = []
-        app.excludeSpecial(500, False)
-        self.assertEqual([], app.SNAPSHOT['items'])
-        self.assertEqual([(1, 'Alpha'), (2, 'Beta')],
-                         [(row['personId'], row['comedian']) for row in app.SNAPSHOT['reviewed']])
-
     def test_public_settings_name_every_owner(self):
         app.SNAPSHOT['people'] = []
         names = {row['id']: row['name'] for row in app.publicSettings()['comedians']}

@@ -467,64 +467,6 @@ def deleteSpecialFile(movie_id, file_id, unmonitor):
     return changeSpecialInRadarr(movie_id, lambda settings: deleteMovieFile(settings, movie_id, file_id, unmonitor, radarr))
 
 
-def excludeSpecial(movie_id, delete_from_radarr):
-    """Persist an exclusion before optionally deleting its Radarr movie."""
-    global SNAPSHOT
-    with REFRESH_LOCK:
-        with LOCK:
-            settings = json.loads(json.dumps(SETTINGS))
-            snapshot = json.loads(json.dumps(SNAPSHOT))
-        movie = next((row for row in snapshot.get('items', []) if row['tmdbId'] == movie_id), None)
-        if movie is None:
-            movie = next((row for row in snapshot.get('reviewed', []) if row['tmdbId'] == movie_id), None)
-        if movie is None and movie_id not in settings.get('excludedMovieIds', []):
-            raise ValueError('That special is no longer in the catalog. Refresh and try again.')
-        matches = []
-        if delete_from_radarr:
-            matches = [row for row in radarr('movie', settings)
-                       if int(row.get('tmdbId', 0)) == movie_id]
-            if any(not row.get('id') for row in matches):
-                raise ValueError('Radarr returned a movie without an ID; no changes were made')
-
-        excluded = set(settings.get('excludedMovieIds', []))
-        excluded.add(movie_id)
-        saveSettings({'excludedMovieIds': sorted(excluded)})
-        snapshot['items'] = [row for row in snapshot.get('items', []) if row['tmdbId'] != movie_id]
-        matching_reviews = [row for row in snapshot.get('reviewed', []) if row['tmdbId'] == movie_id]
-        for row in matching_reviews:
-            row['included'] = False
-            row['reason'] = 'Explicitly excluded from Hecklarr'
-        if not matching_reviews and movie:
-            # Review rows belong to one comedian each, matching what a refresh produces.
-            names = movie.get('comedians') or []
-            for index, owner in enumerate(itemOwners(movie)):
-                snapshot.setdefault('reviewed', []).append({
-                    'tmdbId': movie['tmdbId'], 'title': movie['title'], 'year': movie.get('year', ''),
-                    'releaseDate': movie.get('releaseDate', ''), 'personId': owner,
-                    'comedian': names[index] if index < len(names) else '',
-                    'included': False, 'reason': 'Explicitly excluded from Hecklarr'})
-        with LOCK:
-            saveJson(STATE_DIR / 'snapshot.json', snapshot)
-            SNAPSHOT = snapshot
-
-        if delete_from_radarr:
-            try:
-                for row in matches:
-                    radarr(f"movie/{row['id']}?deleteFiles=true", settings, method='DELETE')
-            except ValueError as error:
-                raise ValueError('The special was excluded from the feed, but Radarr deletion did not finish: ' + str(error)) from None
-            finally:
-                invalidateDownloadCache()
-            if settings.get('radarrListId'):
-                try:
-                    radarr('command', settings, {'name': 'ImportListSync',
-                                                 'definitionId': settings['radarrListId']})
-                except ValueError as error:
-                    raise ValueError('The special was excluded and removed from Radarr, but the list sync failed: ' + str(error)) from None
-        return {'removedFromRadarr': len(matches),
-                'hadFiles': sum(bool(row.get('hasFile')) for row in matches)}
-
-
 def withoutOwner(row, person_id):
     """Return a catalog item with one comedian removed from its owners."""
     owners = itemOwners(row)
@@ -981,13 +923,6 @@ class Handler(BaseHTTPRequestHandler):
             saveSettings(patch)
         return self.reply(200, publicSettings())
 
-    def excludeSpecialRequest(self, body):
-        movie_id = int(body.get('movieId', 0))
-        delete_from_radarr = body.get('deleteFromRadarr', False)
-        if movie_id <= 0 or not isinstance(delete_from_radarr, bool):
-            raise ValueError('Choose a valid special and deletion option')
-        return self.reply(200, excludeSpecial(movie_id, delete_from_radarr))
-
     def authenticatedPost(self, path, body):
         routes = {
             '/api/logout': lambda: self.logout(),
@@ -996,7 +931,6 @@ class Handler(BaseHTTPRequestHandler):
             '/api/comedians/mode': lambda: self.updateComedianMode(body),
             '/api/comedians/remove': lambda: self.removeComedianRequest(body),
             '/api/overrides': lambda: self.updateOverride(body),
-            '/api/specials/exclude': lambda: self.excludeSpecialRequest(body),
             '/api/specials/monitor': lambda: self.monitorSpecialRequest(body),
             '/api/specials/delete-file': lambda: self.deleteSpecialFileRequest(body),
             '/api/refresh': lambda: self.reply(200, refresh(sync=True)),
