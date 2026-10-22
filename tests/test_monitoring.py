@@ -204,6 +204,16 @@ class MonitoringTest(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 self.handler.monitorSpecialRequest({'movieId': 100, 'monitored': value})
 
+    def test_monitoring_does_not_wait_for_a_running_refresh(self):
+        radarr = FakeRadarr(self.movie)
+        results = []
+        with patch.object(app, 'radarr', side_effect=radarr), app.REFRESH_LOCK:
+            thread = threading.Thread(target=lambda: results.append(app.monitorSpecial(100, True)), daemon=True)
+            thread.start()
+            thread.join(timeout=5)
+            self.assertFalse(thread.is_alive())
+        self.assertTrue(results[0]['movie']['monitored'])
+
     def test_external_monitoring_changes_are_read_within_sixty_seconds_independently_of_download_status(self):
         clock = [0]
         app.DOWNLOAD_MOVIES = app.MovieListCache(clock=lambda: clock[0])

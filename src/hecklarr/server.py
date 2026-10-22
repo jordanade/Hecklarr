@@ -419,7 +419,9 @@ def syncRadarr():
 
 def changeSpecialInRadarr(movie_id, action):
     global DOWNLOAD_STATUSES
-    with REFRESH_LOCK, RADARR_LOCK:
+    # Like settings-only changes, direct movie edits do not wait for a running
+    # refresh, which can hold REFRESH_LOCK for minutes of TMDB requests.
+    with RADARR_LOCK:
         with LOCK:
             if not any(row['tmdbId'] == movie_id for row in SNAPSHOT.get('items', [])):
                 raise ValueError('That special is no longer in the catalog. Refresh and try again.')
