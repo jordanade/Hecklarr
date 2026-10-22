@@ -620,6 +620,12 @@ function clearSearch() {
   $('#clear-search').hidden = true;
   $('#search').focus();
 }
+function closeSearchResults() {
+  searchGeneration++;
+  $('#search').focus({preventScroll: true});
+  // Focusing the query can reopen saved results; dismiss after returning focus.
+  $('#search-results').hidden = true;
+}
 $('#clear-search').addEventListener('click', clearSearch);
 $('#search').addEventListener('input', () => {
   searchGeneration++;
@@ -650,11 +656,7 @@ $('.comedian-search').addEventListener('focusout', event => {
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && ($('.comedian-search').contains(document.activeElement) || !$('#search-results').hidden)) {
     event.preventDefault();
-    searchGeneration++;
-    $('#search-results').hidden = true;
-    $('#search').focus();
-    // Focusing the query can reopen saved results; Escape explicitly dismisses them.
-    $('#search-results').hidden = true;
+    closeSearchResults();
   }
 });
 window.addEventListener('resize', positionSearchResults);
@@ -673,7 +675,16 @@ $('#search-form').addEventListener('submit', event => {
     }
     // Clearing or editing the query must not allow an older response to reopen it.
     if (generation !== searchGeneration) return;
-    $('#search-results').replaceChildren(element('h3', 'Search results', 'search-results-heading'));
+    const header = element('div', undefined, 'search-results-header');
+    const close = $('#clear-search').cloneNode(true);
+    close.removeAttribute('id');
+    close.className = 'close-search';
+    close.hidden = false;
+    close.title = 'Close search results';
+    close.setAttribute('aria-label', 'Close search results');
+    close.addEventListener('click', closeSearchResults);
+    header.append(element('h3', 'Search results', 'search-results-heading'), close);
+    $('#search-results').replaceChildren(header);
     if (!people.length) $('#search-results').append(element('p', 'No matching people found.', 'hint'));
     for (const person of people) {
       const row = element('form', undefined, 'result'); const text = element('div', undefined, 'result-summary');
