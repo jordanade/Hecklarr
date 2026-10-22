@@ -31,7 +31,7 @@ Behind a reverse proxy, set `TRUSTED_PROXIES` in `compose.yaml` to the proxy's a
 4. Add your TMDB key. Set **Feed address for Radarr** to an address Radarr can reach.
 5. In Radarr, disable cleanup for the Hecklarr import list, then select **Save & apply to Radarr**.
 
-Use an address reachable from the container making the request. For example, containers on a shared Docker network can use `http://radarr:7878` and `http://hecklarr:6162`. If Radarr and Hecklarr do not share a network, use an address reachable through your host or proxy. 
+Use an address reachable from the container making the request. For example, containers on a shared Docker network can use `http://radarr:7878` and `http://hecklarr:6162`. If Radarr and Hecklarr do not share a network, use an address reachable through your host or proxy. `localhost` inside a container refers to that container.
 
 Set the destination as Radarr sees it, such as `/data/comedy`. Keep it separate from your main movie folder if you want a distinct Plex or Jellyfin library. Hecklarr applies the destination to newly added movies; it does not move existing movies.
 
