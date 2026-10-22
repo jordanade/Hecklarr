@@ -60,17 +60,33 @@ def movieDownloadState(movie, queued):
     return 'missing'
 
 
+def queueMessages(queued, state):
+    """Keep Radarr's explanation for the queue state actually shown to the user."""
+    messages = []
+    for row in queued:
+        if queueItemState(row) != state:
+            continue
+        candidates = [row.get('errorMessage')]
+        statuses = row.get('statusMessages')
+        for status in statuses if isinstance(statuses, list) else []:
+            if isinstance(status, dict):
+                candidates.append(status.get('title'))
+                if isinstance(status.get('messages'), list):
+                    candidates.extend(status['messages'])
+        for message in candidates:
+            if isinstance(message, str) and message.strip() and message.strip() not in messages:
+                messages.append(message.strip())
+    return messages
+
+
 class MovieListCache:
     """Remember Radarr's tracked movies between polls.
 
-    Radarr's movie list covers the whole library and can be several megabytes,
-    while the download queue is small. The full list is re-read only when a cached
-    state could be wrong: a tracked download left the queue (it may have imported),
-    the tracked set changed, a tracked special is not in Radarr yet, the caller
-    invalidated the cache after changing Radarr, or the cache is old.
+    Browser sessions share this cache. Its one-minute lifetime also picks up
+    monitoring changes made in Radarr, independently of download queue changes.
     """
 
-    def __init__(self, max_age=1800, missing_retry=300, clock=time.monotonic):
+    def __init__(self, max_age=60, missing_retry=300, clock=time.monotonic):
         self.max_age = max_age
         self.missing_retry = missing_retry
         self.clock = clock
@@ -78,6 +94,7 @@ class MovieListCache:
 
     def invalidate(self):
         self.movies = None
+        self.messages = {}
         self.tracked = frozenset()
         self.queued_ids = set()
         self.fetched_at = 0.0
@@ -120,6 +137,8 @@ def fetchQueue(settings, fetch):
 def fetchDownloadStatuses(settings, movie_ids, fetch, cache=None):
     """Return download states keyed by TMDB movie ID, reusing a cached movie list when safe."""
     if not movie_ids:
+        if cache is not None:
+            cache.messages = {}
         return {}
     queued = fetchQueue(settings, fetch)
     if cache is None or cache.needsRefresh(movie_ids, queued):
@@ -136,10 +155,20 @@ def fetchDownloadStatuses(settings, movie_ids, fetch, cache=None):
     if cache is not None:
         tracked_radarr_ids = {row.get('id') for row in by_tmdb.values()}
         cache.queued_ids = tracked_radarr_ids & set(queued)
-    return {
+    states = {
         str(movie_id): movieDownloadState(
             by_tmdb.get(movie_id),
             queued.get(by_tmdb.get(movie_id, {}).get('id'), []),
         )
         for movie_id in movie_ids
     }
+    if cache is not None:
+        # Queue messages change on every poll, independently of the cached movie
+        # list. Associate them only with the winning state, never a stale upgrade.
+        cache.messages = {}
+        for movie_id, state in states.items():
+            rows = queued.get(by_tmdb.get(int(movie_id), {}).get('id'), [])
+            messages = queueMessages(rows, state)
+            if messages:
+                cache.messages[movie_id] = messages
+    return states

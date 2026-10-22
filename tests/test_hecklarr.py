@@ -255,6 +255,8 @@ class HttpContractTest(unittest.TestCase):
         return urllib.request.urlopen(req)
 
     def test_feed_uses_radarr_custom_list_id_contract(self):
+        app.SETTINGS['comedians'] = [{'id': 1, 'monitorMode': 'all'}]
+        app.SNAPSHOT['items'][0]['personIds'] = [1]
         with self.request('/feed/movies.json?key=private-feed-key') as response:
             self.assertEqual([{'id': 689643, 'title': 'Sincerely Louis C.K.'}], json.load(response))
 
@@ -357,7 +359,7 @@ class HttpContractTest(unittest.TestCase):
         app.SETTINGS['comedians'] = [{'id': 123, 'name': 'Old cached name', 'includeIds': [456], 'excludeIds': [789]}]
         app.saveJson(app.STATE_DIR / 'settings.json', app.SETTINGS)
         loaded = app.loadSettings()
-        self.assertEqual([{'id': 123, 'includeIds': [456], 'excludeIds': [789]}], loaded['comedians'])
+        self.assertEqual([{'id': 123, 'includeIds': [456], 'excludeIds': [789], 'monitorMode': 'all'}], loaded['comedians'])
         self.assertNotIn('Old cached name', (app.STATE_DIR / 'settings.json').read_text())
 
     def test_expired_cache_is_purged_from_disk_and_not_served(self):
@@ -427,8 +429,9 @@ class HttpContractTest(unittest.TestCase):
         radarr.assert_not_called()
 
     def test_radarr_setup_explains_empty_catalog_before_calling_radarr(self):
-        app.SNAPSHOT = {'updatedAt': 'now', 'items': []}
-        with patch.object(app, 'radarr') as radarr, self.assertRaisesRegex(ValueError, 'catalog has no specials'):
+        app.SNAPSHOT = {}
+        app.SETTINGS['comedians'] = [{'id': 1, 'monitorMode': 'manual'}]
+        with patch.object(app, 'radarr') as radarr, self.assertRaisesRegex(ValueError, 'Refresh the catalog'):
             app.syncRadarr()
         radarr.assert_not_called()
 
@@ -445,6 +448,34 @@ class HttpContractTest(unittest.TestCase):
         self.assertEqual(403, context.exception.code)
         context.exception.close()
         self.assertEqual('/data/comedy', app.SETTINGS['rootFolderPath'])
+
+    def test_monitoring_requires_authentication_and_csrf_and_returns_confirmed_radarr_state(self):
+        body = {'movieId': 689643, 'monitored': False}
+        for headers, status in [({'X-Hecklarr': '1'}, 401), ({'X-Api-Key': 'private-api-key'}, 403)]:
+            with self.subTest(status=status), self.assertRaises(urllib.error.HTTPError) as error:
+                self.request('/api/specials/monitor', body, headers)
+            self.assertEqual(status, error.exception.code)
+            error.exception.close()
+        result = {'movieId': 689643, 'movie': {'inRadarr': True, 'radarrId': 10, 'monitored': False},
+                  'warning': None, 'searchRequested': False}
+        with patch.object(app, 'setMovieMonitoring', return_value=result) as update:
+            with self.request('/api/specials/monitor', body, {'X-Api-Key': 'private-api-key', 'X-Hecklarr': '1'}) as response:
+                self.assertEqual(result, json.load(response))
+        self.assertEqual((689643, False), update.call_args.args[1:3])
+
+    def test_file_deletion_requires_authentication_and_csrf_and_returns_confirmed_radarr_state(self):
+        body = {'movieId': 689643, 'movieFileId': 501, 'unmonitor': True}
+        for headers, status in [({'X-Hecklarr': '1'}, 401), ({'X-Api-Key': 'private-api-key'}, 403)]:
+            with self.subTest(status=status), self.assertRaises(urllib.error.HTTPError) as error:
+                self.request('/api/specials/delete-file', body, headers)
+            self.assertEqual(status, error.exception.code)
+            error.exception.close()
+        result = {'movieId': 689643, 'movie': {'inRadarr': True, 'radarrId': 10, 'monitored': False, 'movieFileId': None},
+                  'warning': None, 'fileDeleted': True}
+        with patch.object(app, 'deleteMovieFile', return_value=result) as delete:
+            with self.request('/api/specials/delete-file', body, {'X-Api-Key': 'private-api-key', 'X-Hecklarr': '1'}) as response:
+                self.assertEqual(result, json.load(response))
+        self.assertEqual((689643, 501, True), delete.call_args.args[1:4])
 
     def test_courarr_password_format_and_persistent_session(self):
         with self.request('/api/login', {'username': 'tester', 'password': 'test-password'},

@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 
 from .clients import HTTP_OPENER
 from .clients import SameOriginRedirectHandler  # noqa: F401 - re-exported for tests
-from .clients import TmdbAccessDenied, TmdbNotFound
+from .clients import RadarrValidationError, TmdbAccessDenied, TmdbNotFound
 from .clients import requestJson as performJsonRequest
 from .discovery import buildSnapshot as buildDiscoverySnapshot
 from .discovery import classify  # noqa: F401 - re-exported for tests
@@ -28,6 +28,8 @@ from .discovery import itemOwners, migrateSnapshot
 from .downloads import MovieListCache
 from .downloads import fetchDownloadStatuses as fetchRadarrDownloadStatuses
 from .downloads import movieDownloadState  # noqa: F401 - re-exported for tests
+from .monitoring import MONITOR_MODES, automaticMovies, deleteMovieFile, movieMonitoring, setMovieMonitoring
+from .search import rankPeople
 
 STATE_DIR = Path(os.environ.get('CONFIG_DIR', '/config'))
 # Python uses a src layout, while the browser assets remain at the repository
@@ -37,6 +39,9 @@ ASSET_DIR = Path(__file__).resolve().parents[2]
 # serializes catalog-changing workflows that may release LOCK during network I/O.
 LOCK = threading.RLock()
 REFRESH_LOCK = threading.Lock()
+# Serialize direct movie edits with status polling so an older poll cannot
+# overwrite a just-confirmed monitoring change in the shared display cache.
+RADARR_LOCK = threading.RLock()
 SESSIONS = {}
 FAILURES = {}
 SETTINGS = {}
@@ -44,7 +49,7 @@ SNAPSHOT = {}
 LAST_ERROR = None
 CACHE_MAX_AGE = dt.timedelta(days=180)
 PASSWORD_SLOTS = threading.BoundedSemaphore(2)
-DOWNLOAD_STATUSES = {'items': {}, 'updatedAt': None, 'lastError': None}
+DOWNLOAD_STATUSES = {'items': {}, 'movies': {}, 'messages': {}, 'pendingMovieIds': [], 'updatedAt': None, 'lastError': None}
 DOWNLOAD_REFRESH = threading.Event()
 DOWNLOAD_MOVIES = MovieListCache()
 DOWNLOAD_POLL_SECONDS = 60
@@ -162,7 +167,7 @@ def saveSettings(patch):
         saveJson(STATE_DIR / 'settings.json', updated)
         SETTINGS = updated
         if previous_radarr != (SETTINGS.get('radarrUrl'), SETTINGS.get('radarrApiKey')):
-            DOWNLOAD_STATUSES = {'items': {}, 'updatedAt': None, 'lastError': None}
+            DOWNLOAD_STATUSES = {'items': {}, 'movies': {}, 'messages': {}, 'pendingMovieIds': [], 'updatedAt': None, 'lastError': None}
             invalidateDownloadCache()
 
 
@@ -181,6 +186,7 @@ def loadSettings():
     settings = {**defaults, **settings}
     for person in settings['comedians']:
         person.pop('name', None)
+        person.setdefault('monitorMode', 'all')
     for key in ['apiKey', 'feedKey']:
         if not settings.get(key):
             settings[key] = secrets.token_hex(24)
@@ -213,6 +219,11 @@ def fetchDownloadStatuses(settings, movie_ids, fetch=None, cache=None):
 
 
 def updateDownloadStatuses():
+    with RADARR_LOCK:
+        pollDownloadStatuses()
+
+
+def pollDownloadStatuses():
     global DOWNLOAD_STATUSES
     with LOCK:
         settings = dict(SETTINGS)
@@ -221,7 +232,10 @@ def updateDownloadStatuses():
         return
     try:
         items = fetchDownloadStatuses(settings, movie_ids)
-        result = {'items': items, 'updatedAt': now(), 'lastError': None}
+        movies = ({str(movie_id): movieMonitoring(DOWNLOAD_MOVIES.movies.get(movie_id)) for movie_id in movie_ids}
+                  if DOWNLOAD_MOVIES.movies is not None else {})
+        result = {'items': items, 'movies': movies, 'messages': DOWNLOAD_MOVIES.messages,
+                  'pendingMovieIds': [], 'updatedAt': now(), 'lastError': None}
     except Exception:
         # Keep the last successful result; an outage must not turn downloads into "missing".
         result = None
@@ -241,6 +255,10 @@ def cachedDownloadStatuses():
     with LOCK:
         tracked = {str(row['tmdbId']) for row in SNAPSHOT.get('items', [])}
         return {**DOWNLOAD_STATUSES,
+                'pendingMovieIds': [movie_id for movie_id in DOWNLOAD_STATUSES.get('pendingMovieIds', [])
+                                    if str(movie_id) in tracked],
+                'movies': {key: state for key, state in DOWNLOAD_STATUSES.get('movies', {}).items() if key in tracked},
+                'messages': {key: messages for key, messages in DOWNLOAD_STATUSES.get('messages', {}).items() if key in tracked},
                 'items': {key: state for key, state in DOWNLOAD_STATUSES['items'].items() if key in tracked}}
 
 
@@ -350,8 +368,12 @@ def syncRadarr():
         settings = dict(SETTINGS)
     if not settings.get('tmdbApiKey'):
         raise ValueError('Add a TMDB API key or Read Access Token before applying settings')
-    if not SNAPSHOT.get('items'):
-        raise ValueError('The catalog has no specials yet. Add a comedian or include a special, then refresh before applying this list to Radarr')
+    if not SNAPSHOT:
+        if settings.get('comedians'):
+            raise ValueError('Refresh the catalog before applying this list to Radarr')
+        # First-time setup must work before choosing any comedians. Building the
+        # empty catalog publishes a valid [] feed without fetching TMDB metadata.
+        refresh()
     root = settings.get('rootFolderPath', '')
     if not root.startswith('/'):
         raise ValueError('Enter an absolute folder path as seen inside Radarr')
@@ -376,11 +398,54 @@ def syncRadarr():
         if field['name'] == 'url':
             field['value'] = feed_url
     path = f'importlist/{existing["id"]}' if existing else 'importlist'
-    saved = radarr(path, settings, body, 'PUT' if existing else 'POST')
+    method = 'PUT' if existing else 'POST'
+    try:
+        saved = radarr(path, settings, body, method)
+    except RadarrValidationError as error:
+        failures = error.failures
+        empty_warning = 'No results were returned from your import list, please check your settings and the log for details.'
+        # Empty manual/future feeds are intentional. Radarr requires forceSave
+        # to acknowledge this warning; never bypass any other validation error.
+        if (automaticMovies(settings, SNAPSHOT) or not isinstance(failures, list) or not failures
+                or any(not isinstance(row, dict) or row.get('errorMessage') != empty_warning
+                       or row.get('isWarning') is not True for row in failures)):
+            raise
+        saved = radarr(path + '?forceSave=true', settings, body, method)
     saveSettings({'radarrListId': saved['id']})
     radarr('command', settings, {'name': 'ImportListSync', 'definitionId': saved['id']})
     invalidateDownloadCache()
     return {'id': saved['id'], 'rootFolderPath': root, 'name': saved['name']}
+
+
+def changeSpecialInRadarr(movie_id, action):
+    global DOWNLOAD_STATUSES
+    with REFRESH_LOCK, RADARR_LOCK:
+        with LOCK:
+            if not any(row['tmdbId'] == movie_id for row in SNAPSHOT.get('items', [])):
+                raise ValueError('That special is no longer in the catalog. Refresh and try again.')
+            settings = dict(SETTINGS)
+        try:
+            result = action(settings)
+            with LOCK:
+                if ((settings.get('radarrUrl'), settings.get('radarrApiKey'))
+                        != (SETTINGS.get('radarrUrl'), SETTINGS.get('radarrApiKey'))):
+                    raise ValueError('The Radarr connection changed. Refresh its status before trying again.')
+                # The movie edit is confirmed, but the download/queue badge is still
+                # cached. Only a later successful poll can replace that badge.
+                DOWNLOAD_STATUSES = {**DOWNLOAD_STATUSES,
+                                     'pendingMovieIds': sorted(set(DOWNLOAD_STATUSES.get('pendingMovieIds', [])) | {movie_id}),
+                                     'movies': {**DOWNLOAD_STATUSES.get('movies', {}), str(movie_id): result['movie']}}
+            return result
+        finally:
+            invalidateDownloadCache()
+
+
+def monitorSpecial(movie_id, monitored):
+    return changeSpecialInRadarr(movie_id, lambda settings: setMovieMonitoring(settings, movie_id, monitored, radarr))
+
+
+def deleteSpecialFile(movie_id, file_id, unmonitor):
+    return changeSpecialInRadarr(movie_id, lambda settings: deleteMovieFile(settings, movie_id, file_id, unmonitor, radarr))
 
 
 def excludeSpecial(movie_id, delete_from_radarr):
@@ -607,8 +672,9 @@ class Handler(BaseHTTPRequestHandler):
         if not SNAPSHOT:
             return self.reply(503, {'error': 'No successful refresh yet'})
         # Radarr Custom Lists parse MovieResultResource.Id, not a tmdbId field.
-        return self.reply(200, [{'id': row['tmdbId'], 'title': row['title']}
-                                for row in SNAPSHOT['items']])
+        with LOCK:
+            movies = automaticMovies(SETTINGS, SNAPSHOT)
+        return self.reply(200, [{'id': row['tmdbId'], 'title': row['title']} for row in movies])
 
     def searchPeople(self, query, settings):
         term = query.get('q', [''])[0].strip()
@@ -620,7 +686,7 @@ class Handler(BaseHTTPRequestHandler):
             'name': row['name'],
             'knownFor': ', '.join(movie.get('title', movie.get('name', ''))
                                   for movie in row.get('known_for', [])[:3]),
-        } for row in data['results']])
+        } for row in rankPeople(data['results'], term)])
 
     def radarrOptions(self, settings):
         return self.reply(200, {
@@ -800,19 +866,63 @@ class Handler(BaseHTTPRequestHandler):
 
     def addComedian(self, body):
         person_id = int(body['id'])
+        mode = body.get('monitorMode')
+        if person_id <= 0 or not isinstance(mode, str) or mode not in MONITOR_MODES:
+            raise ValueError('Choose Manual, Future specials only, or All specials')
         person = tmdb(f'person/{person_id}', SETTINGS)
         # Settings-only changes take LOCK, not REFRESH_LOCK, so they do not wait for a
         # running refresh; the browser starts a fresh refresh afterwards.
         with LOCK:
             people = SETTINGS['comedians'][:]
             if not any(row['id'] == person_id for row in people):
-                people.append({'id': person_id, 'includeIds': [], 'excludeIds': []})
+                selection = {'id': person_id, 'includeIds': [], 'excludeIds': [], 'monitorMode': mode}
+                if mode == 'future':
+                    selection['monitorAfter'] = dt.datetime.now(ZoneInfo(os.environ.get('TZ', 'America/Detroit'))).date().isoformat()
+                people.append(selection)
             saveSettings({'comedians': people})
         result = publicSettings()
         for row in result['comedians']:
             if row['id'] == person_id:
                 row['name'] = person['name']
         return self.reply(200, result)
+
+    def updateComedianMode(self, body):
+        person_id = int(body.get('id', 0))
+        mode = body.get('monitorMode')
+        if not isinstance(mode, str) or mode not in MONITOR_MODES:
+            raise ValueError('Choose Manual, Future specials only, or All specials')
+        with LOCK:
+            people = json.loads(json.dumps(SETTINGS['comedians']))
+            person = next((row for row in people if row['id'] == person_id), None)
+            if person is None:
+                raise ValueError('That comedian is no longer in Hecklarr. Refresh and try again.')
+            if mode == 'future' and person.get('monitorMode') != 'future':
+                person['monitorAfter'] = dt.datetime.now(ZoneInfo(os.environ.get('TZ', 'America/Detroit'))).date().isoformat()
+            person['monitorMode'] = mode
+            saveSettings({'comedians': people})
+        warning = None
+        if SETTINGS.get('radarrListId'):
+            try:
+                radarr('command', SETTINGS, {'name': 'ImportListSync', 'definitionId': SETTINGS['radarrListId']})
+            except ValueError:
+                warning = 'Mode saved, but Radarr did not confirm the list sync. Try refreshing the catalog.'
+        return self.reply(200, {'settings': publicSettings(), 'warning': warning})
+
+    def monitorSpecialRequest(self, body):
+        movie_id = int(body.get('movieId', 0))
+        monitored = body.get('monitored')
+        if movie_id <= 0 or not isinstance(monitored, bool):
+            raise ValueError('Choose a valid special and monitoring value')
+        return self.reply(200, monitorSpecial(movie_id, monitored))
+
+    def deleteSpecialFileRequest(self, body):
+        movie_id = body.get('movieId')
+        file_id = body.get('movieFileId')
+        unmonitor = body.get('unmonitor')
+        if (type(movie_id) is not int or movie_id <= 0 or type(file_id) is not int or file_id <= 0
+                or not isinstance(unmonitor, bool)):
+            raise ValueError('Choose a valid special, downloaded file, and monitoring option')
+        return self.reply(200, deleteSpecialFile(movie_id, file_id, unmonitor))
 
     def removeComedianRequest(self, body):
         person_id = int(body.get('id', 0))
@@ -851,14 +961,15 @@ class Handler(BaseHTTPRequestHandler):
             '/api/logout': lambda: self.logout(),
             '/api/settings': lambda: self.updateSettings(body),
             '/api/comedians': lambda: self.addComedian(body),
+            '/api/comedians/mode': lambda: self.updateComedianMode(body),
             '/api/comedians/remove': lambda: self.removeComedianRequest(body),
             '/api/overrides': lambda: self.updateOverride(body),
             '/api/specials/exclude': lambda: self.excludeSpecialRequest(body),
+            '/api/specials/monitor': lambda: self.monitorSpecialRequest(body),
+            '/api/specials/delete-file': lambda: self.deleteSpecialFileRequest(body),
             '/api/refresh': lambda: self.reply(200, refresh(sync=True)),
             '/api/sync': lambda: self.reply(200, syncRadarr()),
         }
-        if path == '/api/sync' and not SNAPSHOT:
-            raise ValueError('Refresh the catalog first')
         handler = routes.get(path)
         return handler() if handler else self.reply(404, {'error': 'Not found'})
 

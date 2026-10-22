@@ -15,6 +15,14 @@ class TmdbAccessDenied(ValueError):
     """TMDB rejected the installation's credential."""
 
 
+class RadarrValidationError(ValueError):
+    """Keep validation failures available for narrowly acknowledging empty lists."""
+
+    def __init__(self, failures):
+        super().__init__('Radarr returned HTTP 400')
+        self.failures = failures
+
+
 class SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Allow redirects without forwarding credentials to another origin."""
 
@@ -89,6 +97,12 @@ def requestJson(url, key, body=None, method=None, tmdb=False, opener=HTTP_OPENER
                 # Retry-After is advisory but capped so one request cannot stall a worker indefinitely.
                 time.sleep(retryDelay(error.headers.get('Retry-After') if error.headers else None))
                 continue
+            if not tmdb and error.code == 400:
+                try:
+                    failures = json.loads(error.read(65536))
+                except (ValueError, TypeError):
+                    failures = None
+                raise RadarrValidationError(failures) from None
             raise ValueError(f'{service} returned HTTP {error.code}') from None
         except (urllib.error.URLError, TimeoutError):
             if attempt < attempts - 1:

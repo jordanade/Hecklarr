@@ -306,7 +306,7 @@ class HardeningHttpTest(unittest.TestCase):
     def test_adding_a_comedian_does_not_wait_for_a_running_refresh(self):
         headers = {'X-Api-Key': 'private-api-key', 'X-Hecklarr': '1'}
         with patch.object(app, 'tmdb', return_value={'name': 'New comedian'}), app.REFRESH_LOCK:
-            self.assertEqual(200, self.status('/api/comedians', {'id': 42}, headers)[0])
+            self.assertEqual(200, self.status('/api/comedians', {'id': 42, 'monitorMode': 'manual'}, headers)[0])
         self.assertEqual([42], [person['id'] for person in app.SETTINGS['comedians']])
 
     def test_settings_report_the_server_time_zone(self):
@@ -384,6 +384,20 @@ class MovieListCacheTest(unittest.TestCase):
         self.now += 60
         self.assertEqual({'100': 'downloading', '101': 'downloaded'}, self.poll())
         self.assertNotIn('movie', self.calls)
+
+    def test_warning_messages_refresh_without_refetching_movies_and_clear_when_resolved(self):
+        self.queue = [{'movieId': 10, 'status': 'warning', 'errorMessage': 'The download is stalled with no connections'}]
+        self.assertEqual('warning', self.poll()['100'])
+        self.assertEqual({'100': ['The download is stalled with no connections']}, self.cache.messages)
+        self.queue[0]['errorMessage'] = 'Download client needs attention'
+        self.now += 10
+        self.poll()
+        self.assertEqual({'100': ['Download client needs attention']}, self.cache.messages)
+        self.assertNotIn('movie', self.calls)
+        self.queue = [{'movieId': 10, 'status': 'downloading'}]
+        self.now += 10
+        self.assertEqual('downloading', self.poll()['100'])
+        self.assertEqual({}, self.cache.messages)
 
     def test_finished_download_rereads_movies_so_it_shows_as_downloaded(self):
         self.poll()
