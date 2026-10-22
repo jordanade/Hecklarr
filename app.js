@@ -298,7 +298,8 @@ function renderPeople() {
       $('#entries-left-out').scrollIntoView({behavior: 'smooth', block: 'start'});
     });
     const counts = element('div', undefined, 'person-counts');
-    counts.append(count_link, left_out_link);
+    counts.append(count_link);
+    if (checked) counts.append(left_out_link);
     label.append(element('strong', person.name), counts);
     const remove = trashButton('Remove ' + person.name + ' from Hecklarr');
     remove.addEventListener('click', () => {
