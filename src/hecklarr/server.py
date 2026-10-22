@@ -419,10 +419,12 @@ def syncRadarr():
         existing = next((entry for entry in lists if entry['name'] == 'Hecklarr - Comedy'), None)
     body = existing or next(entry for entry in radarr('importlist/schema', settings)
                             if entry['implementation'] == 'RadarrListImport')
+    # Radarr owns this setting; applying Hecklarr's destination/profile must not
+    # turn searches back on. New custom lists use Radarr's default of false.
+    body.setdefault('searchOnAdd', False)
     body.update({'name': 'Hecklarr - Comedy', 'rootFolderPath': root,
                  'qualityProfileId': int(settings['qualityProfileId']), 'enabled': True,
-                 'enableAuto': True, 'monitor': 'movieOnly', 'minimumAvailability': 'released',
-                 'searchOnAdd': True})
+                 'enableAuto': True, 'monitor': 'movieOnly', 'minimumAvailability': 'released'})
     feed_url = settings['feedBaseUrl'].rstrip('/') + '/feed/movies.json?key=' + settings['feedKey']
     for field in body['fields']:
         if field['name'] == 'url':
@@ -445,6 +447,16 @@ def syncRadarr():
     radarr('command', settings, {'name': 'ImportListSync', 'definitionId': saved['id']})
     invalidateDownloadCache()
     return {'id': saved['id'], 'rootFolderPath': root, 'name': saved['name']}
+
+
+def comedianAddOptions(settings):
+    if not settings.get('radarrListId'):
+        return {'configured': False, 'searchOnAdd': None, 'automaticAdditions': False}
+    import_list = radarr(f'importlist/{settings["radarrListId"]}', settings)
+    if not isinstance(import_list, dict) or not isinstance(import_list.get('searchOnAdd'), bool):
+        raise ValueError('Radarr did not return its Search on Add setting. Reconnect the import list and try again.')
+    return {'configured': True, 'searchOnAdd': import_list['searchOnAdd'],
+            'automaticAdditions': bool(import_list.get('enabled') and import_list.get('enableAuto'))}
 
 
 def changeSpecialInRadarr(movie_id, action):
@@ -730,6 +742,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.searchPeople(query, settings)
             if path == '/api/radarr/options':
                 return self.radarrOptions(settings)
+            if path == '/api/radarr/add-options':
+                return self.reply(200, comedianAddOptions(settings))
             return self.reply(404, {'error': 'Not found'})
         except ValueError as error:
             if isinstance(error, TmdbAccessDenied):

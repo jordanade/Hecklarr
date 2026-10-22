@@ -11,6 +11,12 @@ const searchExamples = [
   'Jacqueline Novak', 'Julio Torres', 'Anthony Jeselnik', 'Neal Brennan', 'Jim Norton'
 ];
 let personToRemove;
+let personToAdd;
+let addPersonTrigger;
+let addPersonOptions;
+let addPersonOptionsGeneration = 0;
+let addPersonOptionsLoading = false;
+let addPersonPending = false;
 let fileToDelete;
 const monitorRequests = new Set();
 const fileRequests = new Set();
@@ -441,6 +447,110 @@ async function refreshCatalog() {
     renderPeople();
   }
 }
+function renderAddPersonOptions() {
+  const mode = $('#add-comedian-form').querySelector('input[name="monitorMode"]:checked')?.value || 'all';
+  $('#add-comedian-mode-hint').textContent = mode === 'manual' ? 'Discover specials without adding them to Radarr.'
+    : mode === 'future' ? 'Add specials released after today. Older specials stay in the catalog.'
+    : 'Add all matching specials to Radarr.';
+  $('#confirm-add-comedian').disabled = addPersonPending || (mode !== 'manual' && !addPersonOptions);
+  $('#confirm-add-comedian').textContent = addPersonPending ? 'Adding…' : 'Add comedian';
+  $('#add-comedian-modes fieldset').disabled = addPersonPending;
+  $('#cancel-add-comedian').disabled = addPersonPending;
+  $('#retry-add-options').disabled = addPersonPending || addPersonOptionsLoading;
+  $('#add-comedian-form').setAttribute('aria-busy', String(addPersonPending));
+}
+async function loadAddPersonOptions() {
+  const generation = ++addPersonOptionsGeneration;
+  addPersonOptions = null;
+  addPersonOptionsLoading = true;
+  $('#add-comedian-search-value').textContent = 'Checking…';
+  $('#add-comedian-error').textContent = '';
+  $('#retry-add-options').hidden = true;
+  renderAddPersonOptions();
+  try {
+    const options = await api('radarr/add-options');
+    if (generation !== addPersonOptionsGeneration) return;
+    addPersonOptions = options;
+    $('#add-comedian-search-value').textContent = !options.configured ? 'Not configured' : options.searchOnAdd ? 'On' : 'Off';
+    $('#add-comedian-search-hint').textContent = !options.configured
+      ? 'Automatic additions start after you apply your Radarr list settings.'
+      : !options.automaticAdditions ? 'Automatic additions are currently disabled in Radarr.'
+      : 'Managed in Radarr. Applies to automatic additions.';
+  } catch (error) {
+    if (generation !== addPersonOptionsGeneration) return;
+    $('#add-comedian-search-value').textContent = 'Unavailable';
+    $('#add-comedian-search-hint').textContent = 'Retry to check Radarr’s setting, or choose Manual.';
+    $('#add-comedian-error').textContent = error.message;
+    $('#retry-add-options').hidden = false;
+  } finally {
+    if (generation === addPersonOptionsGeneration) {
+      addPersonOptionsLoading = false;
+      renderAddPersonOptions();
+    }
+  }
+}
+function openAddPerson(person, trigger) {
+  personToAdd = person;
+  addPersonTrigger = trigger;
+  addPersonPending = false;
+  $('#add-comedian-dialog').returnValue = '';
+  $('#add-comedian-name').textContent = person.name;
+  const modes = additionModeOptions('monitorMode', 'all', 'Addition mode for ' + person.name);
+  modes.querySelector('legend').classList.remove('sr-only');
+  $('#add-comedian-modes').replaceChildren(modes);
+  $('#add-comedian-search-hint').textContent = 'Managed in Radarr. Applies to automatic additions.';
+  void loadAddPersonOptions();
+  $('#add-comedian-dialog').showModal();
+}
+$('#add-comedian-modes').addEventListener('change', renderAddPersonOptions);
+$('#retry-add-options').addEventListener('click', loadAddPersonOptions);
+$('#cancel-add-comedian').addEventListener('click', () => $('#add-comedian-dialog').close());
+$('#add-comedian-dialog').addEventListener('cancel', event => {
+  if (addPersonPending) event.preventDefault();
+});
+$('#add-comedian-dialog').addEventListener('close', () => {
+  addPersonOptionsGeneration++;
+  personToAdd = null;
+  if ($('#add-comedian-dialog').returnValue !== 'added' && addPersonTrigger?.isConnected) {
+    // The modal moves focus outside the search group, which dismisses its pane.
+    // Restore that pane before returning focus to the result that opened it.
+    $('#search-results').hidden = false;
+    positionSearchResults();
+    addPersonTrigger.focus({preventScroll: true});
+  }
+  addPersonTrigger = null;
+});
+$('#add-comedian-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (!personToAdd || addPersonPending) return;
+  const person = personToAdd;
+  const monitor_mode = formData(event.target).monitorMode;
+  if (monitor_mode !== 'manual' && !addPersonOptions) return;
+  addPersonPending = true;
+  renderAddPersonOptions();
+  $('#add-comedian-error').textContent = '';
+  try {
+    settings = await api('comedians', {id: person.id, monitorMode: monitor_mode});
+  } catch (error) {
+    $('#add-comedian-error').textContent = error.message;
+    addPersonPending = false;
+    renderAddPersonOptions();
+    return;
+  }
+  $('#search-results').replaceChildren();
+  $('#search-results').hidden = true;
+  addPersonPending = false;
+  $('#add-comedian-dialog').close('added');
+  renderPeople();
+  try {
+    await refreshCatalog();
+    $('#special-filter').value = person.id;
+    renderSpecials();
+    $('#specials-section').scrollIntoView({behavior: 'smooth', block: 'start'});
+  } catch (error) {
+    notify(person.name + ' was added, but the catalog could not refresh: ' + error.message, true);
+  }
+});
 $('#delete-comedian-movies').addEventListener('change', event => {
   $('#confirm-remove-person').textContent = event.target.checked ? 'Remove & delete' : 'Remove comedian';
 });
@@ -609,7 +719,7 @@ function positionSearchResults() {
   const width = Math.min(anchor.width, viewport_width - 24);
   results.style.width = width + 'px';
   results.style.left = Math.max(viewport_left + 12, Math.min(anchor.left, viewport_left + viewport_width - width - 12)) + 'px';
-  results.style.maxHeight = (opens_above ? above : below) + 'px';
+  results.style.maxHeight = Math.min(480, opens_above ? above : below) + 'px';
   results.style.top = (opens_above ? above_bottom - results.getBoundingClientRect().height : below_top) + 'px';
 }
 function clearSearch() {
@@ -687,29 +797,14 @@ $('#search-form').addEventListener('submit', event => {
     $('#search-results').replaceChildren(header);
     if (!people.length) $('#search-results').append(element('p', 'No matching people found.', 'hint'));
     for (const person of people) {
-      const row = element('form', undefined, 'result'); const text = element('div', undefined, 'result-summary');
+      const row = element('div', undefined, 'result'); const text = element('div', undefined, 'result-summary');
       text.append(element('strong', person.name), element('small', person.knownFor || 'No known-for titles listed'));
       const tracked = settings.comedians.find(tracked => tracked.id === person.id);
-      const modes = additionModeOptions('monitorMode', tracked?.monitorMode || 'all', 'Addition mode for ' + person.name);
-      const button = element('button', 'Add'); button.type = 'submit';
+      const button = element('button', 'Add'); button.type = 'button';
       button.disabled = Boolean(tracked);
-      modes.disabled = Boolean(tracked);
       if (button.disabled) button.textContent = 'Added';
-      row.addEventListener('submit', event => {
-        event.preventDefault();
-        const monitor_mode = formData(row).monitorMode;
-        busy(button, async () => {
-          settings = await api('comedians', {id: person.id, monitorMode: monitor_mode});
-          renderPeople();
-          $('#search-results').replaceChildren();
-          $('#search-results').hidden = true;
-          await refreshCatalog();
-          $('#special-filter').value = person.id;
-          renderSpecials();
-          $('#specials-section').scrollIntoView({behavior: 'smooth', block: 'start'});
-        });
-      });
-      row.append(text, modes, button); $('#search-results').append(row);
+      button.addEventListener('click', () => openAddPerson(person, button));
+      row.append(text, button); $('#search-results').append(row);
     }
     $('#search-results').hidden = false;
     positionSearchResults();

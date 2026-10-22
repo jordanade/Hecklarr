@@ -367,11 +367,18 @@ class MonitoringTest(unittest.TestCase):
         self.assertEqual('future', person['monitorMode'])
 
     def test_local_date_follows_the_configured_timezone_and_survives_an_invalid_one(self):
-        # UTC+14 and UTC-11 are always on different calendar dates.
-        with patch.dict(app.os.environ, {'TZ': 'Pacific/Kiritimati'}):
-            ahead = app.localToday()
-        with patch.dict(app.os.environ, {'TZ': 'Pacific/Pago_Pago'}):
-            behind = app.localToday()
+        # Freeze the instant: these zones are 25 hours apart, so their calendar
+        # dates can differ by one or two days depending on the real UTC hour.
+        instant = dt.datetime(2026, 10, 22, 0, 30, tzinfo=dt.timezone.utc)
+        class FixedDateTime(dt.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return instant.astimezone(tz)
+        with patch.object(app.dt, 'datetime', FixedDateTime):
+            with patch.dict(app.os.environ, {'TZ': 'Pacific/Kiritimati'}):
+                ahead = app.localToday()
+            with patch.dict(app.os.environ, {'TZ': 'Pacific/Pago_Pago'}):
+                behind = app.localToday()
         self.assertEqual(dt.timedelta(days=1), ahead - behind)
         with patch.dict(app.os.environ, {'TZ': 'Not/AZone'}):
             self.assertEqual(dt.timezone.utc, app.localZone())
@@ -433,6 +440,66 @@ class MonitoringTest(unittest.TestCase):
                     with self.assertRaises(app.RadarrValidationError):
                         app.syncRadarr()
             self.assertEqual(allowed, 'importlist/1?forceSave=true' in calls)
+
+    def test_applying_settings_preserves_radarr_search_on_add_for_existing_lists(self):
+        for search_on_add in [False, True]:
+            saved = []
+            def radarr(path, settings, body=None, method=None, search_on_add=search_on_add, saved=saved):
+                if path == 'rootfolder':
+                    return [{'path': '/comedy'}]
+                if path == 'config/importlist':
+                    return {'listSyncLevel': 'disabled'}
+                if path == 'importlist':
+                    return [{'id': 1, 'searchOnAdd': search_on_add, 'fields': [{'name': 'url'}]}]
+                if path == 'importlist/1':
+                    saved.append(copy.deepcopy(body))
+                    return {**body, 'id': 1}
+                if path == 'command':
+                    return {'id': 2}
+                raise AssertionError(path)
+            with self.subTest(search_on_add=search_on_add), patch.object(app, 'radarr', side_effect=radarr):
+                app.syncRadarr()
+                app.syncRadarr()
+            self.assertEqual([search_on_add, search_on_add], [row['searchOnAdd'] for row in saved])
+
+    def test_new_custom_list_uses_radarr_search_on_add_default(self):
+        saved = []
+        def radarr(path, settings, body=None, method=None):
+            if path == 'rootfolder':
+                return [{'path': '/comedy'}]
+            if path == 'config/importlist':
+                return {'listSyncLevel': 'disabled'}
+            if path == 'importlist' and body is None:
+                return []
+            if path == 'importlist/schema':
+                return [{'implementation': 'RadarrListImport', 'searchOnAdd': False, 'fields': [{'name': 'url'}]}]
+            if path == 'importlist' and method == 'POST':
+                saved.append(copy.deepcopy(body))
+                return {**body, 'id': 1}
+            if path == 'command':
+                return {'id': 2}
+            raise AssertionError(path)
+        with patch.object(app, 'radarr', side_effect=radarr):
+            app.syncRadarr()
+        self.assertFalse(saved[0]['searchOnAdd'])
+
+    def test_add_options_reads_current_radarr_value_each_time_without_writing_it(self):
+        with patch.object(app, 'radarr', side_effect=[{'searchOnAdd': False, 'enabled': True, 'enableAuto': True},
+                                                     {'searchOnAdd': True, 'enabled': False, 'enableAuto': True}]) as radarr:
+            self.assertEqual({'configured': True, 'searchOnAdd': False, 'automaticAdditions': True}, app.comedianAddOptions(app.SETTINGS))
+            self.assertEqual({'configured': True, 'searchOnAdd': True, 'automaticAdditions': False}, app.comedianAddOptions(app.SETTINGS))
+        self.assertEqual([('importlist/1', app.SETTINGS)] * 2, [call.args for call in radarr.call_args_list])
+
+    def test_add_options_keeps_unknown_or_failed_reads_distinct_from_searches_off(self):
+        for response in [None, [], {}, {'searchOnAdd': None}, {'searchOnAdd': 'false'}]:
+            with self.subTest(response=response), patch.object(app, 'radarr', return_value=response), self.assertRaises(ValueError):
+                app.comedianAddOptions(app.SETTINGS)
+        with patch.object(app, 'radarr', side_effect=ValueError('Connection failed')), self.assertRaisesRegex(ValueError, 'Connection failed'):
+            app.comedianAddOptions(app.SETTINGS)
+        with patch.object(app, 'radarr') as radarr:
+            self.assertEqual({'configured': False, 'searchOnAdd': None, 'automaticAdditions': False},
+                             app.comedianAddOptions({**app.SETTINGS, 'radarrListId': None}))
+        radarr.assert_not_called()
 
     def test_initial_setup_connects_before_adding_any_comedians(self):
         app.SNAPSHOT = {}

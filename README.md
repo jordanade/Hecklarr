@@ -31,13 +31,13 @@ Addresses must be reachable from the container making the request; `localhost` i
 
 ## Use
 
-Search for a comedian under **Comedians**, pick a mode, and click **Add**:
+Search for a comedian under **Comedians**, click **Add**, then choose a mode in the confirmation dialog:
 
 - **All specials:** add the whole catalog to Radarr.
 - **Future specials only:** add only specials released after today.
 - **Manual:** add nothing automatically; use a special's bookmark to monitor it.
 
-The bookmark mirrors Radarr's monitored flag. Use **Review metadata & exceptions** to fix TMDB matches. Hecklarr only finds specials TMDB lists as movies, not TV episodes. See [docs/usage.md](docs/usage.md) for details.
+The dialog displays Radarr's **Search on Add** setting; automatic additions honor that setting without changing it. The bookmark mirrors Radarr's monitored flag. Use **Review metadata & exceptions** to fix TMDB matches. Hecklarr only finds specials TMDB lists as movies, not TV episodes. See [docs/usage.md](docs/usage.md) for details.
 
 ## Updating
 

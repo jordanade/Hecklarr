@@ -18,7 +18,9 @@ Search prioritizes matching people whose TMDB biography identifies them as comed
 
 ## Addition modes
 
-New results default to **All**, which can immediately add and download the existing catalog. Every mode keeps all discovered titles visible in **Stand-up specials**.
+Click **Add** beside a search result to choose an addition mode in the confirmation dialog. The dialog defaults to **All**, which can immediately add the existing catalog to Radarr. Every mode keeps all discovered titles visible in **Stand-up specials**.
+
+The dialog reads and displays the Hecklarr import list's current **Search on Add** setting from Radarr. Automatic additions use that setting; Hecklarr does not overwrite it when applying configuration. New custom lists default to **Off**, and existing lists keep their current value. Change it in Radarr's import-list settings. With searches off, specials are still added and monitored; Radarr can still pick up releases through its normal monitoring. Individual bookmark actions explicitly request a search when turning monitoring on.
 
 - **Manual:** discover the catalog without adding movies to Radarr. Turn on a special's bookmark flag to add it, monitor it, and start a search.
 - **Future specials only:** automatically add specials whose release date is after the day you enable this mode, using the application's timezone. The cutoff stays fixed across refreshes and restarts. Older specials and titles without valid release dates remain available to monitor individually.
