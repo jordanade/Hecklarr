@@ -12,6 +12,7 @@ from load_app import loadApp
 
 
 app = loadApp('hecklarr_test_downloads')
+from hecklarr.downloads import queueMessages  # noqa: E402
 
 
 class DownloadStateTest(unittest.TestCase):
@@ -76,16 +77,37 @@ class DownloadStateTest(unittest.TestCase):
             self.assertEqual({}, app.fetchDownloadStatuses({}, set(), fetch=fetch))
             fetch.assert_not_called()
 
+    def test_warning_includes_download_client_error_and_radarr_status_messages(self):
+        rows = [{'status': 'warning', 'errorMessage': ' The download is stalled with no connections ',
+                 'statusMessages': [{'title': 'Download warning', 'messages': ['The download is stalled with no connections', 'Check the download client']}]}]
+        self.assertEqual(['The download is stalled with no connections', 'Download warning', 'Check the download client'],
+                         queueMessages(rows, 'warning'))
+
+    def test_messages_only_explain_the_displayed_state(self):
+        rows = [{'status': 'warning', 'errorMessage': 'A download is stalled'},
+                {'status': 'completed', 'trackedDownloadState': 'importBlocked',
+                 'statusMessages': [{'title': 'Unable to import', 'messages': ['No eligible files found']}]}]
+        state = app.movieDownloadState(self.movie, rows)
+        self.assertEqual(['Unable to import', 'No eligible files found'], queueMessages(rows, state))
+        downloaded = app.movieDownloadState({**self.movie, 'hasFile': True}, rows)
+        self.assertEqual([], queueMessages(rows, downloaded))
+
+    def test_missing_or_malformed_message_fields_do_not_hide_status(self):
+        rows = [{'status': 'warning', 'errorMessage': None, 'statusMessages': 'invalid'},
+                {'status': 'warning', 'statusMessages': [None, {'title': 3, 'messages': [None, '', '  ', 'Useful detail']}]}]
+        self.assertEqual(['Useful detail'], queueMessages(rows, 'warning'))
+
 
 class StatusCacheTest(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
-        self.old = {'items': {'100': 'downloaded'}, 'updatedAt': '2026-10-14T10:00:00+00:00', 'lastError': None}
+        self.old = {'items': {'100': 'downloaded'}, 'movies': {}, 'messages': {}, 'pendingMovieIds': [], 'updatedAt': '2026-10-14T10:00:00+00:00', 'lastError': None}
         self.patches = [patch.object(app, 'STATE_DIR', Path(self.directory.name)),
                         patch.object(app, 'SETTINGS', {'apiKey': 'cache-key', 'radarrUrl': 'http://radarr:7878',
                                                        'radarrApiKey': 'private-radarr-key', 'comedians': []}),
                         patch.object(app, 'SNAPSHOT', {'updatedAt': app.now(), 'items': [{'tmdbId': 100}]}),
                         patch.object(app, 'DOWNLOAD_STATUSES', copy.deepcopy(self.old)),
+                        patch.object(app, 'DOWNLOAD_MOVIES', app.MovieListCache()),
                         patch.object(app, 'DOWNLOAD_REFRESH', threading.Event())]
         for item in self.patches:
             item.start()
@@ -127,14 +149,34 @@ class StatusCacheTest(unittest.TestCase):
             return {'100': 'missing'}
         with patch.object(app, 'fetchDownloadStatuses', side_effect=fetch):
             app.updateDownloadStatuses()
-        self.assertEqual({'items': {}, 'updatedAt': None, 'lastError': None}, app.DOWNLOAD_STATUSES)
+        self.assertEqual({'items': {}, 'movies': {}, 'messages': {}, 'pendingMovieIds': [], 'updatedAt': None, 'lastError': None}, app.DOWNLOAD_STATUSES)
         self.assertTrue(app.DOWNLOAD_REFRESH.is_set())
 
     def test_cached_output_omits_removed_titles_and_private_radarr_data(self):
         app.DOWNLOAD_STATUSES['items']['999'] = 'missing'
+        app.DOWNLOAD_STATUSES['messages'] = {'999': ['Not in the catalog']}
         result = app.cachedDownloadStatuses()
         self.assertEqual({'100': 'downloaded'}, result['items'])
+        self.assertEqual({}, result['messages'])
         self.assertNotIn('private-radarr-key', json.dumps(result))
+
+    def test_poll_returns_warning_details_and_preserves_them_during_outages(self):
+        def fetch(path, settings):
+            if path == 'movie':
+                return [{'id': 10, 'tmdbId': 100, 'monitored': True, 'hasFile': False}]
+            return {'totalRecords': 1, 'records': [{'movieId': 10, 'status': 'warning',
+                                                   'errorMessage': 'The download is stalled with no connections'}]}
+        with patch.object(app, 'radarr', side_effect=fetch):
+            app.updateDownloadStatuses()
+        first = app.cachedDownloadStatuses()
+        self.assertEqual('warning', first['items']['100'])
+        self.assertEqual({'100': ['The download is stalled with no connections']}, first['messages'])
+        with patch.object(app, 'radarr', side_effect=ValueError('Radarr unavailable')):
+            app.updateDownloadStatuses()
+        stale = app.cachedDownloadStatuses()
+        self.assertEqual(first['messages'], stale['messages'])
+        self.assertEqual(first['updatedAt'], stale['updatedAt'])
+        self.assertIsNotNone(stale['lastError'])
 
     def test_status_endpoints_read_cache_without_waiting_on_radarr_and_require_auth(self):
         server = app.LimitedThreadingHTTPServer(('127.0.0.1', 0), app.Handler)

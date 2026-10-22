@@ -1,6 +1,6 @@
 # <img src="icon.png" alt="" width="56" align="absmiddle">&nbsp;&nbsp;Hecklarr
 
-Track stand-up comedians and automatically add their specials to Radarr. Hecklarr uses TMDB to find titles and maintains a Radarr import list; Radarr handles searching and downloading.
+Track stand-up comedians and choose which specials to monitor in Radarr. Hecklarr uses TMDB to find titles; Radarr owns monitoring and handles searching and downloading.
 
 <img width="1222" height="808" alt="Screenshot 2026-10-16 at 5 30 17 AM" src="https://github.com/user-attachments/assets/e923905d-5569-44e7-9bff-a93739ee5513" />
 
@@ -31,21 +31,37 @@ Behind a reverse proxy, set `TRUSTED_PROXIES` in `compose.yaml` to the proxy's a
 4. Add your TMDB key. Set **Feed address for Radarr** to an address Radarr can reach.
 5. In Radarr, disable cleanup for the Hecklarr import list, then select **Save & apply to Radarr**.
 
-Use an address reachable from the container making the request. For example, containers on a shared Docker network can use `http://radarr:7878` and `http://hecklarr:6162`. If Radarr and Hecklarr do not share a network, use an address reachable through your host or proxy. 
+Use an address reachable from the container making the request. For example, containers on a shared Docker network can use `http://radarr:7878` and `http://hecklarr:6162`. If Radarr and Hecklarr do not share a network, use an address reachable through your host or proxy. `localhost` inside a container refers to that container.
 
 Set the destination as Radarr sees it, such as `/data/comedy`. Keep it separate from your main movie folder if you want a distinct Plex or Jellyfin library. Hecklarr applies the destination to newly added movies; it does not move existing movies.
 
 ## Use
 
-Add comedians from **Comedians**. Hecklarr refreshes the catalog and asks Radarr to sync the list; you can also refresh manually. Use **Entries left out** to review excluded TMDB credits or include a title by its TMDB movie ID.
+Search prioritizes exact names and matching name prefixes, then popularity within equally relevant matches.
 
-Removing a comedian removes their titles from the feed. A special shared with another tracked comedian stays in the feed and in Radarr. **Exclude this** and **Remove** each offer to also delete the movie from Radarr; that option is off by default, and confirming it permanently deletes files managed by Radarr. Disable the import list in Radarr to pause additions.
+Find comedians under **Comedians**, choose an addition mode directly in the search result, and click **Add**. New results default to **All**, which can immediately add and download the existing catalog. Every mode keeps all discovered titles visible in **Stand-up specials**:
+
+- **Manual:** discover the catalog without adding movies to Radarr. Turn on a special's bookmark flag to add it, monitor it, and start a search.
+- **Future specials only:** automatically add specials whose release date is after the day you enable this mode, using the application's timezone. The cutoff stays fixed across refreshes and restarts. Older specials and titles without valid release dates remain available to monitor individually.
+- **All specials:** automatically add all matching specials, including the existing catalog.
+
+Existing comedians keep **All specials** after upgrading. Change a comedian's mode with the inline **All**, **Future only**, or **Manual** radios; changes save immediately. Mode changes affect automatic additions; they leave movies and monitoring values already in Radarr unchanged.
+
+The bookmark flag is filled when Radarr monitors the movie and outlined when it does not. Turning it off unmonitors the movie in Radarr, keeping its files and active downloads. Changes made in Radarr appear in Hecklarr within about a minute while the page is open. Monitoring values are cached only for display; Hecklarr does not store a second set of per-special monitoring preferences. During outages, flags keep their last known values and are marked stale; unknown values are not shown as unmonitored.
+
+Hecklarr refreshes the catalog daily and asks Radarr to sync eligible automatic additions; you can also refresh manually. Existing unmonitored Radarr movies stay unmonitored during list syncs. Deleting an automatically eligible movie can allow it to be added again; select Radarr's import-list exclusion option when deleting to prevent this.
+
+Downloaded specials have a Trash icon for deleting the media file while keeping the movie entry in Radarr. For monitored specials, the confirmation defaults to unmonitoring to prevent future automatic downloads; clear that option to keep monitoring. Already unmonitored specials do not show this option. The file shown when opening the confirmation must still match Radarr’s current file before deletion.
+
+Click **Y left out** beside a comedian’s specials count to open their filtered **Entries left out** list. Use **Review metadata & exceptions** to confirm or exclude TMDB matches. These are discovery corrections, separate from monitoring. Confirming a special follows its comedian's addition mode; in Manual mode, use the bookmark afterward to start monitoring. A failed refresh keeps the last successful catalog available.
+
+Removing a comedian removes their titles from the catalog and automatic feed. A special shared with another tracked comedian stays in the catalog and remains eligible through that comedian's mode. The comedian’s Trash icon offers to also delete the comedian's movies from Radarr; that option is off by default, and confirming it permanently deletes files managed by Radarr. Disable the import list in Radarr to pause automatic additions.
 
 Discovery covers specials listed as TMDB movies. Performances catalogued only as TV episodes cannot be added to Radarr. Matching uses performer and writing credits, title billing, descriptions, and stage-name aliases. Ambiguous entries remain available for review; your exclusions take precedence.
 
 TMDB metadata can be incomplete, and an item in Hecklarr does not guarantee a release is available from your indexers.
 
-Badges beneath each title show its Radarr download status. Status refreshes every minute while Hecklarr is open in a browser, and pauses five minutes after the last visit. Each refresh reads Radarr's download queue; the full movie list is re-read only when a tracked download finishes, after Hecklarr changes Radarr, or every 30 minutes; if Radarr is unavailable, Hecklarr keeps the last known status and marks it stale.
+Badges show **Updating…** after a monitor change until fresh Radarr status arrives. Otherwise, they show the Radarr download status, independently of monitoring: a downloaded special can be unmonitored. Warnings and other queue problems include Radarr’s explanation beneath the status. Background checks keep the previous status visible; **Checking…** appears only when no previous status is available. Status refreshes every minute while Hecklarr is open in a browser, and pauses five minutes after the last visit. Browser sessions share one poll of Radarr's movie list and download queue. If Radarr is unavailable, Hecklarr keeps the last known status and marks it stale.
 
 ## TMDB data and credits
 

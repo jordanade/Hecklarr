@@ -109,13 +109,6 @@ class SharedSpecialTest(unittest.TestCase):
         app.migrateSnapshot(legacy)
         self.assertEqual([{'tmdbId': 7, 'personIds': [3], 'comedians': ['Gamma'], 'title': 'Old'}], legacy['items'])
 
-    def test_excluding_shared_special_leaves_a_review_row_for_each_owner(self):
-        app.SNAPSHOT['reviewed'] = []
-        app.excludeSpecial(500, False)
-        self.assertEqual([], app.SNAPSHOT['items'])
-        self.assertEqual([(1, 'Alpha'), (2, 'Beta')],
-                         [(row['personId'], row['comedian']) for row in app.SNAPSHOT['reviewed']])
-
     def test_public_settings_name_every_owner(self):
         app.SNAPSHOT['people'] = []
         names = {row['id']: row['name'] for row in app.publicSettings()['comedians']}
@@ -306,7 +299,7 @@ class HardeningHttpTest(unittest.TestCase):
     def test_adding_a_comedian_does_not_wait_for_a_running_refresh(self):
         headers = {'X-Api-Key': 'private-api-key', 'X-Hecklarr': '1'}
         with patch.object(app, 'tmdb', return_value={'name': 'New comedian'}), app.REFRESH_LOCK:
-            self.assertEqual(200, self.status('/api/comedians', {'id': 42}, headers)[0])
+            self.assertEqual(200, self.status('/api/comedians', {'id': 42, 'monitorMode': 'manual'}, headers)[0])
         self.assertEqual([42], [person['id'] for person in app.SETTINGS['comedians']])
 
     def test_settings_report_the_server_time_zone(self):
@@ -372,6 +365,11 @@ class MovieListCacheTest(unittest.TestCase):
         self.calls.append(path)
         if path == 'movie':
             return copy.deepcopy(self.movies)
+        if path.startswith('movie/'):
+            movie = next((row for row in self.movies if path == f"movie/{row['id']}"), None)
+            if movie is None:
+                raise ValueError('Radarr returned HTTP 404')
+            return copy.deepcopy(movie)
         return {'totalRecords': len(self.queue), 'records': copy.deepcopy(self.queue)}
 
     def poll(self, movie_ids=frozenset({100, 101})):
@@ -384,6 +382,36 @@ class MovieListCacheTest(unittest.TestCase):
         self.now += 60
         self.assertEqual({'100': 'downloading', '101': 'downloaded'}, self.poll())
         self.assertNotIn('movie', self.calls)
+
+    def test_monitoring_changes_are_read_per_movie_without_the_full_list(self):
+        self.poll()
+        self.movies[0]['monitored'] = False
+        self.now += 60
+        self.poll()
+        self.assertNotIn('movie', self.calls)
+        self.assertEqual(['movie/10', 'movie/11'], sorted(path for path in self.calls if path.startswith('movie/')))
+        self.assertFalse(self.cache.movies[100]['monitored'])
+
+    def test_movie_deleted_in_radarr_falls_back_to_the_full_list(self):
+        self.poll()
+        del self.movies[1]
+        self.now += 60
+        self.assertEqual('not-in-radarr', self.poll()['101'])
+        self.assertIn('movie', self.calls)
+
+    def test_warning_messages_refresh_without_refetching_movies_and_clear_when_resolved(self):
+        self.queue = [{'movieId': 10, 'status': 'warning', 'errorMessage': 'The download is stalled with no connections'}]
+        self.assertEqual('warning', self.poll()['100'])
+        self.assertEqual({'100': ['The download is stalled with no connections']}, self.cache.messages)
+        self.queue[0]['errorMessage'] = 'Download client needs attention'
+        self.now += 10
+        self.poll()
+        self.assertEqual({'100': ['Download client needs attention']}, self.cache.messages)
+        self.assertNotIn('movie', self.calls)
+        self.queue = [{'movieId': 10, 'status': 'downloading'}]
+        self.now += 10
+        self.assertEqual('downloading', self.poll()['100'])
+        self.assertEqual({}, self.cache.messages)
 
     def test_finished_download_rereads_movies_so_it_shows_as_downloaded(self):
         self.poll()

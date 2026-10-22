@@ -8,6 +8,10 @@ WORKDIR /app
 COPY index.html app.js style.css icon.png tmdb-logo.svg ./
 COPY LICENSE THIRD_PARTY_NOTICES.md ./
 COPY src ./src
+# Files can be private on the build host; the service runs as UID 1000 and must
+# be able to read the assets and the source. a+rX keeps directories traversable
+# and works with both BuildKit and the legacy builder.
+RUN chmod -R a+rX /app
 ENV PYTHONPATH=/app/src PYTHONUNBUFFERED=1 CONFIG_DIR=/config TZ=America/Detroit
 USER 1000:1000
 EXPOSE 6162
