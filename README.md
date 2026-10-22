@@ -2,7 +2,7 @@
 
 Track stand-up comedians and choose which specials to monitor in Radarr. Hecklarr uses TMDB to find titles; Radarr owns monitoring and handles searching and downloading.
 
-<img width="1222" height="808" alt="Screenshot 2026-10-16 at 5 30 17 AM" src="https://github.com/user-attachments/assets/e923905d-5569-44e7-9bff-a93739ee5513" />
+<img width="1385" height="885" alt="Screenshot 2026-10-22 at 5 42 23 AM" src="https://github.com/user-attachments/assets/751fc44f-901a-4a61-8bbb-ca1a4c304f90" />
 
 ## Install
 
