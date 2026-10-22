@@ -121,8 +121,10 @@ def deleteMovieFile(settings, movie_id, file_id, unmonitor, fetch):
     movie = findMovie(settings, movie_id, fetch)
     if movieMonitoring(movie)['movieFileId'] != file_id:
         raise ValueError('The downloaded file changed or is no longer present. Refresh its status and try again.')
+    unmonitored = False
     if unmonitor and movie['monitored']:
         setMovieMonitoring(settings, movie_id, False, fetch)
+        unmonitored = True
         movie = findMovie(settings, movie_id, fetch)
         if movieMonitoring(movie)['movieFileId'] != file_id:
             raise ValueError('The special was unmonitored, but its downloaded file changed. No file was deleted. Refresh and try again.')
@@ -131,7 +133,7 @@ def deleteMovieFile(settings, movie_id, file_id, unmonitor, fetch):
     except ValueError:
         movie = findMovie(settings, movie_id, fetch)
         if movieMonitoring(movie)['movieFileId'] == file_id or (movie and movie.get('hasFile') and not movieMonitoring(movie)['movieFileId']):
-            prefix = 'The special was unmonitored, but ' if unmonitor else ''
+            prefix = 'The special was unmonitored, but ' if unmonitored else ''
             raise ValueError(prefix + 'Radarr did not confirm file deletion. Refresh its status before trying again.') from None
     else:
         movie = findMovie(settings, movie_id, fetch)

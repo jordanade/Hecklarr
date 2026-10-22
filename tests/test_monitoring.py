@@ -323,6 +323,14 @@ class MonitoringTest(unittest.TestCase):
         self.assertEqual(501, radarr.movie['movieFileId'])
         invalidate.assert_called_once()
 
+    def test_failed_deletion_of_an_unmonitored_special_does_not_claim_an_unmonitor(self):
+        radarr = FakeRadarr({**self.movie, 'monitored': False, 'movieFileId': 501})
+        radarr.delete_failure = 'before'
+        with patch.object(app, 'radarr', side_effect=radarr), self.assertRaises(ValueError) as caught:
+            app.deleteSpecialFile(100, 501, True)
+        self.assertTrue(str(caught.exception).startswith('Radarr did not confirm file deletion'))
+        self.assertFalse(any(method == 'PUT' for _, _, method in radarr.calls))
+
     def test_file_deletion_endpoint_rejects_invalid_ids_and_monitoring_options(self):
         valid = {'movieId': 100, 'movieFileId': 501, 'unmonitor': True}
         for key, values in [('movieId', [None, True, '100', 0, -1]),
