@@ -82,13 +82,19 @@ def queueMessages(queued, state):
 class MovieListCache:
     """Remember Radarr's tracked movies between polls.
 
-    Browser sessions share this cache. Its one-minute lifetime also picks up
-    monitoring changes made in Radarr, independently of download queue changes.
+    Browser sessions share this cache. Radarr's movie list covers the whole
+    library and can be several megabytes, so it is re-read only when a cached
+    state could be wrong: a tracked download left the queue (it may have
+    imported), the tracked set changed, a tracked special is not in Radarr yet,
+    the caller invalidated the cache after changing Radarr, or the cache is old.
+    Monitoring changes made in Radarr are picked up sooner by re-reading only
+    the tracked movies Radarr already has, one small request each.
     """
 
-    def __init__(self, max_age=60, missing_retry=300, clock=time.monotonic):
+    def __init__(self, max_age=1800, missing_retry=300, monitor_age=60, clock=time.monotonic):
         self.max_age = max_age
         self.missing_retry = missing_retry
+        self.monitor_age = monitor_age
         self.clock = clock
         self.invalidate()
 
@@ -98,6 +104,7 @@ class MovieListCache:
         self.tracked = frozenset()
         self.queued_ids = set()
         self.fetched_at = 0.0
+        self.monitored_at = 0.0
 
     def needsRefresh(self, movie_ids, queued):
         if self.movies is None or self.tracked != frozenset(movie_ids):
@@ -134,6 +141,21 @@ def fetchQueue(settings, fetch):
         page += 1
 
 
+def refreshTrackedMovies(settings, by_tmdb, fetch):
+    """Re-read tracked Radarr movies individually; None asks for the full list instead."""
+    refreshed = {}
+    for tmdb_id, row in by_tmdb.items():
+        try:
+            current = fetch(f"movie/{row.get('id')}", settings)
+        except ValueError:
+            # A movie deleted in Radarr returns 404; the full list settles it.
+            return None
+        if not isinstance(current, dict) or current.get('id') != row.get('id') or current.get('tmdbId') != tmdb_id:
+            return None
+        refreshed[tmdb_id] = current
+    return refreshed
+
+
 def fetchDownloadStatuses(settings, movie_ids, fetch, cache=None):
     """Return download states keyed by TMDB movie ID, reusing a cached movie list when safe."""
     if not movie_ids:
@@ -141,7 +163,15 @@ def fetchDownloadStatuses(settings, movie_ids, fetch, cache=None):
             cache.messages = {}
         return {}
     queued = fetchQueue(settings, fetch)
-    if cache is None or cache.needsRefresh(movie_ids, queued):
+    by_tmdb = None
+    if cache is not None and not cache.needsRefresh(movie_ids, queued):
+        by_tmdb = cache.movies
+        if cache.clock() - cache.monitored_at >= cache.monitor_age:
+            by_tmdb = refreshTrackedMovies(settings, by_tmdb, fetch)
+            if by_tmdb is not None:
+                cache.movies = by_tmdb
+                cache.monitored_at = cache.clock()
+    if by_tmdb is None:
         movies = fetch('movie', settings)
         if not isinstance(movies, list):
             raise ValueError('Invalid Radarr movie response')
@@ -149,9 +179,7 @@ def fetchDownloadStatuses(settings, movie_ids, fetch, cache=None):
         if cache is not None:
             cache.movies = by_tmdb
             cache.tracked = frozenset(movie_ids)
-            cache.fetched_at = cache.clock()
-    else:
-        by_tmdb = cache.movies
+            cache.fetched_at = cache.monitored_at = cache.clock()
     if cache is not None:
         tracked_radarr_ids = {row.get('id') for row in by_tmdb.values()}
         cache.queued_ids = tracked_radarr_ids & set(queued)

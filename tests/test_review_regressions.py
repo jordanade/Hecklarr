@@ -372,6 +372,11 @@ class MovieListCacheTest(unittest.TestCase):
         self.calls.append(path)
         if path == 'movie':
             return copy.deepcopy(self.movies)
+        if path.startswith('movie/'):
+            movie = next((row for row in self.movies if path == f"movie/{row['id']}"), None)
+            if movie is None:
+                raise ValueError('Radarr returned HTTP 404')
+            return copy.deepcopy(movie)
         return {'totalRecords': len(self.queue), 'records': copy.deepcopy(self.queue)}
 
     def poll(self, movie_ids=frozenset({100, 101})):
@@ -384,6 +389,22 @@ class MovieListCacheTest(unittest.TestCase):
         self.now += 60
         self.assertEqual({'100': 'downloading', '101': 'downloaded'}, self.poll())
         self.assertNotIn('movie', self.calls)
+
+    def test_monitoring_changes_are_read_per_movie_without_the_full_list(self):
+        self.poll()
+        self.movies[0]['monitored'] = False
+        self.now += 60
+        self.poll()
+        self.assertNotIn('movie', self.calls)
+        self.assertEqual(['movie/10', 'movie/11'], sorted(path for path in self.calls if path.startswith('movie/')))
+        self.assertFalse(self.cache.movies[100]['monitored'])
+
+    def test_movie_deleted_in_radarr_falls_back_to_the_full_list(self):
+        self.poll()
+        del self.movies[1]
+        self.now += 60
+        self.assertEqual('not-in-radarr', self.poll()['101'])
+        self.assertIn('movie', self.calls)
 
     def test_warning_messages_refresh_without_refetching_movies_and_clear_when_resolved(self):
         self.queue = [{'movieId': 10, 'status': 'warning', 'errorMessage': 'The download is stalled with no connections'}]
