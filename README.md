@@ -1,4 +1,4 @@
-# <img src="icon.png" alt="" width="56" align="absmiddle">&nbsp;&nbsp;Hecklarr
+# <img src="icon.png" alt="" width="46" align="baseline"> &nbsp; Hecklarr
 
 Track stand-up comedians and choose which specials to monitor in Radarr. Hecklarr uses TMDB to find titles; Radarr owns monitoring and handles searching and downloading.
 
